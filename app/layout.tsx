@@ -4,6 +4,7 @@ import { GeistMono } from 'geist/font/mono'
 import { Analytics } from '@vercel/analytics/next'
 import { ClientSessionProvider } from '@/components/session-provider'
 import { SettingsProvider } from '@/contexts/SettingsContext'
+import { SpeedInsights } from "@vercel/speed-insights/next"
 import './globals.css'
 
 export const metadata: Metadata = {
@@ -34,6 +35,7 @@ html {
           </SettingsProvider>
         </ClientSessionProvider>
         <Analytics />
+        <SpeedInsights />
       </body>
     </html>
   )
