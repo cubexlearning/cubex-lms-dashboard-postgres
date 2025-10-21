@@ -5,15 +5,15 @@ const prisma = new PrismaClient()
 
 async function main() {
   // Create a super admin user
-  const hashedPassword = await bcrypt.hash('Acadeno@123', 10)
+  const hashedPassword = await bcrypt.hash('Admin@cubexlearning@123', 10)
   
   const superAdmin = await prisma.user.upsert({
-    where: { email: 'acadeno360@gmail.com' },
+    where: { email: 'admin@cubexlearning.com' },
     update: {
       status: 'ACTIVE' as const,
     },
     create: {
-      email: 'acadeno360@gmail.com',
+      email: 'admin@cubexlearning.com',
       password: hashedPassword,
       name: 'Super Admin',
       role: 'SUPER_ADMIN',
@@ -31,20 +31,20 @@ async function main() {
       id: 'default-institution',
       
       // Institution Information
-      institutionName: 'Acadeno LMS',
+      institutionName: 'Cubex Learning',
       institutionLogo: '/placeholder-logo.png',
-      institutionWebsite: 'https://acadeno.com',
-      contactEmail: 'admin@acadeno.com',
-      contactPhone: '+91-9876543210',
-      address: '123 Education Street, Learning City, LC 12345',
+      institutionWebsite: 'https://cubexlearning.com',
+      contactEmail: 'admin@cubexlearning.com',
+      contactPhone: '+447359568414',
+      address: '7 Gunsgreen Park, Eyemouth TD145LH United Kingdom',
       registrationNumber: 'EDU-REG-2024-001',
       
       // Regional & Localization
-      primaryCurrency: 'INR',
-      country: 'IN',
-      defaultTimezone: 'Asia/Kolkata',
+      primaryCurrency: 'GBP',
+      country: 'UK',
+      defaultTimezone: 'Europe/London',
       dateFormat: 'DD/MM/YYYY',
-      numberFormat: 'IN',
+      numberFormat: 'en-GB',
       language: 'en',
       
       // Academic Settings
@@ -69,8 +69,8 @@ async function main() {
       cancellationNoticeHours: 4,
       
       // Communication Settings
-      emailFromName: 'Acadeno LMS',
-      emailFromAddress: 'noreply@acadeno.com',
+      emailFromName: 'Cubex Learning',
+      emailFromAddress: 'noreply@cubexlearning.com',
       brandPrimaryColor: '#3B82F6', // Blue
       brandSecondaryColor: '#10B981', // Green
       
@@ -82,14 +82,12 @@ async function main() {
 
   // Create sample categories
   const categories = [
-    { name: 'App Development', slug: 'app-development', description: 'Mobile and web application development courses' },
-    { name: 'Web Development', slug: 'web-development', description: 'Frontend and backend web development courses' },
-    { name: 'Data Science', slug: 'data-science', description: 'Data analysis, machine learning, and statistical modeling courses' },
-    { name: 'Data Analysis', slug: 'data-analysis', description: 'Data processing, visualization, and business intelligence courses' },
-    { name: 'Cyber Security', slug: 'cyber-security', description: 'Information security, ethical hacking, and network protection courses' },
-    { name: 'Digital Marketing', slug: 'digital-marketing', description: 'Online marketing, SEO, social media, and advertising courses' },
-    { name: 'Robotics', slug: 'robotics', description: 'Robotic systems, automation, and engineering courses' },
-    { name: 'AI', slug: 'ai', description: 'Artificial intelligence, machine learning, and automation courses' },
+    { name: 'Online Tuition', slug: 'online-tuition', description: 'Online tuition courses' },
+    { name: 'Exam Preparation', slug: 'exam-preparation', description: 'Exam preparation courses' },
+    { name: 'Arts and Music', slug: 'arts-and-music', description: 'Arts and music courses' },
+    { name: 'Sports and Fitness', slug: 'sports-and-fitness', description: 'Sports and fitness courses' },
+    { name: 'Language Learning', slug: 'language-learning', description: 'Language learning courses' },
+    { name: 'Professional Development', slug: 'professional-development', description: 'Professional development courses' },
   ]
 
   for (const category of categories) {
@@ -140,14 +138,14 @@ async function main() {
   const curriculum = await prisma.curriculum.upsert({
     where: { 
       name_type_level: {
-        name: 'Web Development with AI',
+        name: 'UK Common Core Curriculum',
         type: 'ACADEMIC',
         level: 'FOUNDATION' as const
       }
     },
     update: {},
     create: {
-      name: 'Web Development with AI',
+      name: 'UK Common Core Curriculum',
       type: 'ACADEMIC',
       level: 'FOUNDATION' as const,
       description: 'Comprehensive learning curriculum for all subjects',
