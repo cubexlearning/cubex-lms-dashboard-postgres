@@ -1,15 +1,23 @@
 import type { Metadata } from 'next'
 import { GeistSans } from 'geist/font/sans'
 import { GeistMono } from 'geist/font/mono'
+
 import { Analytics } from '@vercel/analytics/next'
 import { ClientSessionProvider } from '@/components/session-provider'
 import { SettingsProvider } from '@/contexts/SettingsContext'
-import { SpeedInsights } from "@vercel/speed-insights/next"
+import { Poppins } from 'next/font/google'
+
+const poppins = Poppins({
+  subsets: ['latin'],
+  weight: ['400', '500', '600', '700'], // Add the weights you need
+  variable: '--font-poppins',
+})
+
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'LMS Platform',
-  description: 'Learning Management System'
+  title: 'Cubex Learning Management System',
+  description: 'Cubex Learning Management System'
 }
 
 export default function RootLayout({
@@ -21,11 +29,11 @@ export default function RootLayout({
     <html lang="en">
       <head>
         <style>{`
-html {
-  font-family: ${GeistSans.style.fontFamily};
-  --font-sans: ${GeistSans.variable};
-  --font-mono: ${GeistMono.variable};
-}
+            html {
+              font-family: ${poppins.style.fontFamily};
+              --font-sans: ${poppins.variable};
+              --font-mono: ${GeistMono.variable};
+            }
         `}</style>
       </head>
       <body>
@@ -35,7 +43,6 @@ html {
           </SettingsProvider>
         </ClientSessionProvider>
         <Analytics />
-        <SpeedInsights />
       </body>
     </html>
   )
