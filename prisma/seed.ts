@@ -35,8 +35,8 @@ async function main() {
       institutionLogo: '/placeholder-logo.png',
       institutionWebsite: 'https://cubexlearning.com',
       contactEmail: 'admin@cubexlearning.com',
-      contactPhone: '+91-9876543210',
-      address: '123 Education Street, Learning City, LC 12345',
+      contactPhone: '+447359568414',
+      address: '7 Gunsgreen Park, Eyemouth TD145LH United Kingdom',
       registrationNumber: 'EDU-REG-2024-001',
       
       // Regional & Localization
