@@ -1,0 +1,723 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Dictionary {
+  id          String             @id @default(cuid())
+  slug        String             @unique
+  name        String
+  description String?
+  isActive    Boolean            @default(true)
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+  options     DictionaryOption[]
+
+  @@map("dictionaries")
+}
+
+model DictionaryOption {
+  id           String     @id @default(cuid())
+  dictionaryId String
+  name         String
+  slug         String
+  description  String?
+  sortOrder    Int        @default(0)
+  isActive     Boolean    @default(true)
+  metadata     Json?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  dictionary   Dictionary @relation(fields: [dictionaryId], references: [id])
+
+  @@unique([dictionaryId, slug])
+  @@map("dictionary_options")
+}
+
+model InstitutionSettings {
+  id                      String   @id @default(cuid())
+  institutionName         String   @default("Indian Learning Institute")
+  institutionLogo         String?
+  institutionWebsite      String?
+  contactEmail            String   @default("admin@indianlearning.com")
+  contactPhone            String?
+  address                 String?
+  registrationNumber      String?
+  primaryCurrency         String   @default("INR")
+  country                 String   @default("IN")
+  defaultTimezone         String   @default("Asia/Kolkata")
+  dateFormat              String   @default("DD/MM/YYYY")
+  numberFormat            String   @default("en-IN")
+  language                String   @default("en")
+  academicYearStructure   String   @default("SEMESTER")
+  gradingSystem           String   @default("PERCENTAGE")
+  ageGroups               String[] @default(["6-10", "11-14", "15-17", "18+"])
+  qualificationLevels     String[] @default(["Primary", "Secondary", "Higher Secondary", "Graduate", "Post Graduate"])
+  paymentMethods          String[] @default(["CARD", "UPI", "NET_BANKING", "WALLET"])
+  taxRate                 Decimal  @default(0.18)
+  taxInclusive            Boolean  @default(true)
+  refundPolicyDays        Int      @default(7)
+  minimumCoursePrice      Decimal?
+  maximumCoursePrice      Decimal?
+  defaultSessionDuration  Int      @default(60)
+  maxGroupSize            Int      @default(15)
+  minGroupSize            Int      @default(5)
+  bookingLeadTimeHours    Int      @default(12)
+  cancellationNoticeHours Int      @default(4)
+  emailFromName           String   @default("Indian Learning Institute")
+  emailFromAddress        String   @default("noreply@indianlearning.com")
+  brandPrimaryColor       String   @default("#FF6B35")
+  brandSecondaryColor     String   @default("#00A86B")
+  isActive                Boolean  @default(true)
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  @@map("institution_settings")
+}
+
+model User {
+  id                          String                        @id @default(cuid())
+  email                       String                        @unique
+  password                    String
+  name                        String
+  role                        UserRole                      @default(STUDENT)
+  status                      UserStatus                    @default(ACTIVE)
+  avatar                      String?
+  emailVerified               DateTime?
+  firstName                   String?
+  lastName                    String?
+  phone                       String?
+  dateOfBirth                 DateTime?
+  bio                         String?
+  qualifications              String[]
+  experience                  Int?
+  specializations             String[]
+  hourlyRate                  Decimal?
+  availability                Json?
+  createdAt                   DateTime                      @default(now())
+  updatedAt                   DateTime                      @updatedAt
+  lastLogin                   DateTime?
+  address                     String?
+  ageGroup                    String?
+  emergencyContact            String?
+  guardianRelation            String?
+  parentEmail                 String?
+  parentName                  String?
+  parentPhone                 String?
+  submissions                 AssignmentSubmission[]        @relation("StudentSubmissions")
+  assignments                 Assignment[]                  @relation("AssignmentCreator")
+  markedAttendance            AttendanceRecord[]            @relation("TeacherMarkedAttendance")
+  attendanceRecords           AttendanceRecord[]            @relation("StudentAttendance")
+  teachingSessions            ClassSession[]                @relation("TutorSessions")
+  courseTutors                CourseTutor[]
+  emailOtps                   EmailOtp[]
+  enrollments                 Enrollment[]                  @relation("StudentEnrollments")
+  onboardingNonces            OnboardingNonce[]
+  passwordResetTokens         PasswordResetToken[]
+  createdAbsences             StudentAbsence[]              @relation("CreatedAbsences")
+  absences                    StudentAbsence[]              @relation("StudentAbsences")
+  createdActivities           StudentActivity[]             @relation("CreatedActivities")
+  activities                  StudentActivity[]             @relation("StudentActivities")
+  StudentSyllabusItemProgress StudentSyllabusItemProgress[]
+  syllabusProgress            StudentSyllabusProgress[]
+
+  @@map("users")
+}
+
+model EmailOtp {
+  id          String    @id @default(cuid())
+  userId      String
+  codeHash    String
+  expiresAt   DateTime
+  attempts    Int       @default(0)
+  maxAttempts Int       @default(5)
+  createdAt   DateTime  @default(now())
+  consumedAt  DateTime?
+  user        User      @relation(fields: [userId], references: [id])
+
+  @@index([userId, expiresAt])
+  @@map("email_otps")
+}
+
+model OtpSendLog {
+  id        String   @id @default(cuid())
+  email     String
+  ip        String?
+  createdAt DateTime @default(now())
+
+  @@index([email, createdAt])
+  @@map("otp_send_logs")
+}
+
+model OnboardingNonce {
+  id        String    @id @default(cuid())
+  userId    String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id])
+
+  @@index([userId, expiresAt])
+  @@map("onboarding_nonces")
+}
+
+model Curriculum {
+  id          String   @id @default(cuid())
+  name        String
+  type        String
+  level       String
+  description String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  courses     Course[]
+
+  @@unique([name, type, level])
+  @@map("curricula")
+}
+
+model Category {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  description String?
+  icon        String?
+  color       String?
+  isActive    Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  courses     Course[]
+
+  @@map("categories")
+}
+
+model Course {
+  id                String                @id @default(cuid())
+  title             String
+  slug              String                @unique
+  shortDescription  String
+  longDescription   String?
+  curriculumId      String?
+  categoryId        String
+  courseTypeId      String?
+  courseFormatId    String?
+  oneToOnePrice     Decimal?
+  oneToOneOffer     Decimal?
+  oneToOneActive    Boolean               @default(true)
+  groupPrice        Decimal?
+  groupOffer        Decimal?
+  groupActive       Boolean               @default(true)
+  maxGroupSize      Int?
+  minGroupSize      Int?
+  sessionDuration   Int?
+  sessionsPerWeek   Int?
+  totalSessions     Int?
+  minAge            Int?
+  maxAge            Int?
+  prerequisiteLevel String?
+  primaryImage      String?
+  secondaryImage    String?
+  videoUrl          String?
+  courseMaterials   String[]
+  status            CourseStatus          @default(DRAFT)
+  isFeatured        Boolean               @default(false)
+  tags              String[]
+  difficulty        String?
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+  publishedAt       DateTime?
+  assignments       Assignment[]
+  sessions          ClassSession[]
+  pricingHistory    CoursePricing[]       @relation("CoursePricingHistory")
+  syllabusItems     CourseSyllabusItem[]
+  syllabusPhases    CourseSyllabusPhase[]
+  courseTutors      CourseTutor[]
+  category          Category              @relation(fields: [categoryId], references: [id])
+  courseFormat      CourseFormatModel?    @relation(fields: [courseFormatId], references: [id])
+  courseType        CourseType?           @relation(fields: [courseTypeId], references: [id])
+  curriculum        Curriculum?           @relation(fields: [curriculumId], references: [id])
+  enrollments       Enrollment[]
+  lessons           Lesson[]
+
+  @@map("courses")
+}
+
+model CourseSyllabusPhase {
+  id              String                    @id @default(cuid())
+  courseId        String
+  name            String
+  order           Int                       @default(0)
+  createdAt       DateTime                  @default(now())
+  updatedAt       DateTime                  @updatedAt
+  items           CourseSyllabusItem[]
+  course          Course                    @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  studentProgress StudentSyllabusProgress[]
+
+  @@index([courseId, order])
+  @@map("course_syllabus_phases")
+}
+
+model CourseSyllabusItem {
+  id              String                        @id @default(cuid())
+  courseId        String
+  phaseId         String
+  title           String
+  description     String?
+  order           Int                           @default(0)
+  createdAt       DateTime                      @default(now())
+  updatedAt       DateTime                      @updatedAt
+  course          Course                        @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  phase           CourseSyllabusPhase           @relation(fields: [phaseId], references: [id], onDelete: Cascade)
+  studentProgress StudentSyllabusItemProgress[]
+
+  @@index([courseId, phaseId, order])
+  @@map("course_syllabus_items")
+}
+
+model StudentSyllabusProgress {
+  id                 String              @id @default(cuid())
+  studentId          String
+  phaseId            String
+  completedByStudent Boolean             @default(false)
+  completedByTutor   Boolean             @default(false)
+  completedAt        DateTime?
+  tutorNotes         String?
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  phase              CourseSyllabusPhase @relation(fields: [phaseId], references: [id])
+  student            User                @relation(fields: [studentId], references: [id])
+
+  @@unique([studentId, phaseId])
+  @@map("student_syllabus_progress")
+}
+
+model StudentSyllabusItemProgress {
+  id                 String             @id @default(cuid())
+  studentId          String
+  itemId             String
+  completedByStudent Boolean            @default(false)
+  completedByTutor   Boolean            @default(false)
+  completedAt        DateTime?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  studentCompletedAt DateTime?
+  studentCompletedBy String?
+  tutorCompletedAt   DateTime?
+  tutorCompletedBy   String?
+  item               CourseSyllabusItem @relation(fields: [itemId], references: [id])
+  student            User               @relation(fields: [studentId], references: [id])
+
+  @@unique([studentId, itemId])
+  @@map("student_syllabus_item_progress")
+}
+
+model CourseType {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  description String?
+  isActive    Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  courses     Course[]
+
+  @@map("course_types")
+}
+
+model CourseFormatModel {
+  id          String          @id @default(cuid())
+  name        String
+  slug        String          @unique
+  description String?
+  isActive    Boolean         @default(true)
+  sortOrder   Int             @default(0)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  pricings    CoursePricing[]
+  courses     Course[]
+
+  @@map("course_formats")
+}
+
+model CourseTutor {
+  id               String   @id @default(cuid())
+  courseId         String
+  tutorId          String
+  isPrimary        Boolean  @default(false)
+  specialization   String?
+  canTeachOneToOne Boolean  @default(true)
+  canTeachGroup    Boolean  @default(true)
+  hourlyRate       Decimal?
+  isActive         Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  course           Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  tutor            User     @relation(fields: [tutorId], references: [id], onDelete: Cascade)
+
+  @@unique([courseId, tutorId])
+  @@map("course_tutors")
+}
+
+model CoursePricing {
+  id              String             @id @default(cuid())
+  courseId        String
+  pricingFormatId String?
+  price           Decimal
+  offerPrice      Decimal?
+  isActive        Boolean            @default(true)
+  validFrom       DateTime           @default(now())
+  validTo         DateTime?
+  reason          String?
+  createdBy       String
+  createdAt       DateTime           @default(now())
+  course          Course             @relation("CoursePricingHistory", fields: [courseId], references: [id])
+  pricingFormat   CourseFormatModel? @relation(fields: [pricingFormatId], references: [id])
+
+  @@map("course_pricing")
+}
+
+model Enrollment {
+  id              String           @id @default(cuid())
+  studentId       String
+  courseId        String
+  format          EnrollmentFormat
+  sessionCount    Int
+  sessionDuration Int
+  basePrice       Decimal
+  discountType    String?
+  discountValue   Decimal?
+  discountAmount  Decimal          @default(0)
+  subtotal        Decimal          @default(0)
+  taxRate         Decimal          @default(0)
+  taxAmount       Decimal          @default(0)
+  finalPrice      Decimal
+  offerPrice      Decimal?
+  currency        String           @default("GBP")
+  paymentStatus   PaymentStatus    @default(PENDING)
+  paymentMethod   String?
+  paidAt          DateTime?
+  preferredDays   String[]
+  preferredTimes  String[]
+  timezone        String           @default("Europe/London")
+  status          EnrollmentStatus @default(PENDING)
+  progress        Decimal          @default(0)
+  lastAccessedAt  DateTime?
+  enrolledAt      DateTime         @default(now())
+  startedAt       DateTime?
+  completedAt     DateTime?
+  expiresAt       DateTime?
+  priceHistory    Json?
+  lastPriceUpdate DateTime?
+  sessions        ClassSession[]
+  course          Course           @relation(fields: [courseId], references: [id])
+  student         User             @relation("StudentEnrollments", fields: [studentId], references: [id])
+  payments        Payment[]
+
+  @@unique([studentId, courseId, format])
+  @@map("enrollments")
+}
+
+model ClassSession {
+  id           String             @id @default(cuid())
+  courseId     String
+  enrollmentId String?
+  type         SessionType
+  title        String
+  description  String?
+  duration     Int
+  scheduledAt  DateTime
+  startedAt    DateTime?
+  endedAt      DateTime?
+  status       SessionStatus      @default(SCHEDULED)
+  tutorId      String
+  studentIds   String[]
+  maxStudents  Int?
+  isOnline     Boolean            @default(true)
+  meetingLink  String?
+  location     String?
+  materials    String[]
+  homework     String?
+  notes        String?
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+  attendance   AttendanceRecord[]
+  course       Course             @relation(fields: [courseId], references: [id])
+  enrollment   Enrollment?        @relation(fields: [enrollmentId], references: [id])
+  tutor        User               @relation("TutorSessions", fields: [tutorId], references: [id])
+  absences     StudentAbsence[]
+  activities   StudentActivity[]
+
+  @@map("class_sessions")
+}
+
+model AttendanceRecord {
+  id           String           @id @default(cuid())
+  status       AttendanceStatus @default(ABSENT)
+  notes        String?
+  markedAt     DateTime         @default(now())
+  sessionId    String
+  studentId    String
+  markedBy     String
+  checkInTime  DateTime?
+  checkOutTime DateTime?
+  teacher      User             @relation("TeacherMarkedAttendance", fields: [markedBy], references: [id])
+  session      ClassSession     @relation(fields: [sessionId], references: [id])
+  student      User             @relation("StudentAttendance", fields: [studentId], references: [id])
+
+  @@unique([sessionId, studentId])
+  @@map("attendance_records")
+}
+
+model StudentActivity {
+  id        String       @id @default(cuid())
+  studentId String
+  sessionId String
+  activity  String
+  status    String       @default("PENDING")
+  remarks   String?
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+  createdBy String
+  creator   User         @relation("CreatedActivities", fields: [createdBy], references: [id])
+  session   ClassSession @relation(fields: [sessionId], references: [id])
+  student   User         @relation("StudentActivities", fields: [studentId], references: [id])
+
+  @@map("student_activities")
+}
+
+model StudentAbsence {
+  id        String       @id @default(cuid())
+  studentId String
+  sessionId String
+  reason    String
+  status    String       @default("PENDING")
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+  createdBy String
+  creator   User         @relation("CreatedAbsences", fields: [createdBy], references: [id])
+  session   ClassSession @relation(fields: [sessionId], references: [id])
+  student   User         @relation("StudentAbsences", fields: [studentId], references: [id])
+
+  @@map("student_absences")
+}
+
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  token     String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id])
+
+  @@index([userId, expiresAt])
+  @@map("password_reset_tokens")
+}
+
+model Lesson {
+  id          String   @id @default(cuid())
+  title       String
+  content     String
+  videoUrl    String?
+  duration    Int?
+  order       Int
+  isPublished Boolean  @default(false)
+  courseId    String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  course      Course   @relation(fields: [courseId], references: [id])
+
+  @@map("lessons")
+}
+
+model Assignment {
+  id                      String                 @id @default(cuid())
+  title                   String
+  description             String?
+  dueDate                 DateTime
+  maxPoints               Float                  @default(100)
+  courseId                String?
+  creatorId               String
+  createdAt               DateTime               @default(now())
+  updatedAt               DateTime               @updatedAt
+  allowLate               Boolean                @default(true)
+  assignmentType          AssignmentType         @default(REGULAR)
+  attachments             String[]
+  instructions            String?
+  isActive                Boolean                @default(true)
+  latePenalty             Float?
+  targetCourseIds         String[]
+  targetStudentIds        String[]
+  targetType              TargetType
+  expectedSubmissionTypes SubmissionType[]       @default([])
+  submissions             AssignmentSubmission[]
+  course                  Course?                @relation(fields: [courseId], references: [id])
+  creator                 User                   @relation("AssignmentCreator", fields: [creatorId], references: [id])
+
+  @@map("assignments")
+}
+
+model AssignmentSubmission {
+  id             String           @id @default(cuid())
+  content        String?
+  score          Float?
+  feedback       String?
+  isGraded       Boolean          @default(false)
+  assignmentId   String
+  studentId      String
+  submittedAt    DateTime?
+  gradedAt       DateTime?
+  status         SubmissionStatus @default(PENDING)
+  submissionType SubmissionType   @default(TEXT)
+  assignment     Assignment       @relation(fields: [assignmentId], references: [id])
+  student        User             @relation("StudentSubmissions", fields: [studentId], references: [id])
+
+  @@unique([assignmentId, studentId, submissionType])
+  @@map("assignment_submissions")
+}
+
+model Payment {
+  id              String        @id @default(cuid())
+  enrollmentId    String
+  amount          Decimal
+  currency        String        @default("GBP")
+  method          PaymentMethod
+  status          PaymentStatus @default(PENDING)
+  transactionId   String?
+  gatewayResponse Json?
+  dueDate         DateTime
+  paidAt          DateTime?
+  refundedAt      DateTime?
+  description     String?
+  invoiceNumber   String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  enrollment      Enrollment    @relation(fields: [enrollmentId], references: [id])
+
+  @@map("payments")
+}
+
+enum UserRole {
+  SUPER_ADMIN
+  ADMIN
+  TUTOR
+  PARENT
+  STUDENT
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+  PENDING_VERIFICATION
+}
+
+enum CourseCategory {
+  ONLINE_TUITION
+  EXAM_PREPARATION
+  ARTS_AND_MUSIC
+  SPORTS_AND_FITNESS
+  LANGUAGE_LEARNING
+  PROFESSIONAL_DEVELOPMENT
+}
+
+enum CourseFormat {
+  ONE_TO_ONE_ONLY
+  GROUP_ONLY
+  BOTH_FORMATS
+}
+
+enum CourseStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+  SUSPENDED
+}
+
+enum EnrollmentFormat {
+  ONE_TO_ONE
+  GROUP
+}
+
+enum EnrollmentStatus {
+  PENDING
+  ACTIVE
+  COMPLETED
+  CANCELLED
+  SUSPENDED
+}
+
+enum SessionType {
+  ONE_TO_ONE
+  GROUP
+  WORKSHOP
+  ASSESSMENT
+}
+
+enum SessionStatus {
+  SCHEDULED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+  EXCUSED
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+  PARTIAL
+}
+
+enum PaymentMethod {
+  CARD
+  BANK_TRANSFER
+  PAYPAL
+  STRIPE
+  CASH
+  UPI
+  NET_BANKING
+  WALLET
+}
+
+enum AssignmentType {
+  REGULAR
+  PROJECT
+  QUIZ
+  PEER_REVIEW
+  GROUP_WORK
+}
+
+enum TargetType {
+  ALL_STUDENTS
+  COURSES
+  SELECTED_INDIVIDUALS
+}
+
+enum SubmissionType {
+  TEXT
+  GITHUB_URL
+  LIVE_URL
+  GOOGLE_DRIVE_URL
+  MULTIPLE_TYPES
+}
+
+enum SubmissionStatus {
+  PENDING
+  PROGRESS
+  COMPLETED
+  GRADED
+}
