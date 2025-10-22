@@ -13,6 +13,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { toast } from 'sonner'
 import { Loader2, AlertCircle, CheckCircle2, User, BookOpen, CreditCard } from 'lucide-react'
 import { PricingCalculator, PricingBreakdown } from './PricingCalculator'
+import { isValidPhoneNumber } from "libphonenumber-js";
 
 interface EnrollmentFormProps {
   onSuccess: () => void
@@ -59,6 +60,10 @@ export function EnrollmentForm({ onSuccess, onCancel }: EnrollmentFormProps) {
   const [emailExists, setEmailExists] = useState(false)
   const [existingStudentData, setExistingStudentData] = useState<Student | null>(null)
   
+
+  const [studentPhoneValid, setStudentPhoneValid] = useState(true)
+  const [parentPhoneValid, setParentPhoneValid] = useState(true)
+
   // Form data
   const [formData, setFormData] = useState({
     // Student data
@@ -201,6 +206,11 @@ export function EnrollmentForm({ onSuccess, onCancel }: EnrollmentFormProps) {
       setEmailCheckLoading(false)
     }
   }
+
+  const checkPhoneNumber = (phone: string) => {
+    if (!phone) return false;
+    return isValidPhoneNumber(phone);
+  };
 
   // Update available formats when course changes
   useEffect(() => {
@@ -430,6 +440,16 @@ export function EnrollmentForm({ onSuccess, onCancel }: EnrollmentFormProps) {
         setCurrentTab('student')
         return
       }
+      if (!checkPhoneNumber(formData.studentPhone)) {
+        toast.error('Please enter a valid student phone number')
+        setCurrentTab('student')
+        return
+      }
+      if (formData.parentPhone && !checkPhoneNumber(formData.parentPhone)) {
+        toast.error('Please enter a valid parent phone number')
+        setCurrentTab('student')
+        return
+      }      
       if (!formData.ageGroup) {
         toast.error('Age group is required')
         setCurrentTab('student')
@@ -469,13 +489,15 @@ export function EnrollmentForm({ onSuccess, onCancel }: EnrollmentFormProps) {
       
       // Step 1: Create student if new
       if (studentMode === 'new') {
-        const studentResponse = await fetch('/api/students', {
+        const studentResponse = await fetch('/api/users', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             name: formData.studentName,
             email: formData.studentEmail,
             phone: formData.studentPhone,
+            role: 'STUDENT',
+            status: 'ACTIVE',
             ageGroup: formData.ageGroup,
             dateOfBirth: formData.dateOfBirth || undefined,
             parentName: formData.parentName || undefined,
@@ -496,13 +518,11 @@ export function EnrollmentForm({ onSuccess, onCancel }: EnrollmentFormProps) {
         
         studentId = studentResult.data.id
         
-        // Show credentials to admin
-        if (studentResult.credentials) {
-          toast.success(
-            `Student created! Login: ${studentResult.credentials.email} | Password: ${studentResult.credentials.temporaryPassword}`,
-            { duration: 10000 }
-          )
-        }
+        // Note: Onboarding email is automatically sent by /api/users for ACTIVE students
+        toast.success(
+          `Student created successfully! Onboarding email sent to ${formData.studentEmail}`,
+          { duration: 5000 }
+        )
       }
       
       // Step 2: Create enrollment
@@ -692,9 +712,25 @@ export function EnrollmentForm({ onSuccess, onCancel }: EnrollmentFormProps) {
                       <Input
                         id="studentPhone"
                         value={formData.studentPhone}
-                        onChange={(e) => setFormData({ ...formData, studentPhone: e.target.value })}
+                        onChange={(e) => {
+                          const phone = e.target.value;
+                          setFormData({ ...formData, studentPhone: phone });
+                          
+                          // Validate phone number
+                          if (phone) {
+                            const isValid = checkPhoneNumber(phone);
+                            setStudentPhoneValid(isValid);
+                          } else {
+                            setStudentPhoneValid(true); // Reset validation when empty
+                          }
+                        }}
                         placeholder="+91 98765 43210"
+                        className={!studentPhoneValid ? 'border-red-500' : ''}
+
                       />
+                      {!studentPhoneValid && formData.studentPhone && (
+                        <p className="text-sm text-red-500 mt-1">Please enter a valid phone number</p>
+                      )}
                     </div>
                     
                     <div className="space-y-2">
@@ -733,9 +769,24 @@ export function EnrollmentForm({ onSuccess, onCancel }: EnrollmentFormProps) {
                         <Input
                           id="parentPhone"
                           value={formData.parentPhone}
-                          onChange={(e) => setFormData({ ...formData, parentPhone: e.target.value })}
+                          onChange={(e) => {
+                            const phone = e.target.value;
+                            setFormData({ ...formData, parentPhone: phone });
+                            
+                            // Validate phone number
+                            if (phone) {
+                              const isValid = checkPhoneNumber(phone);
+                              setParentPhoneValid(isValid);
+                            } else {
+                              setParentPhoneValid(true); // Reset validation when empty
+                            }
+                          }}
                           placeholder="+91 98765 43210"
+                          className={!parentPhoneValid ? 'border-red-500' : ''}
                         />
+                        {!parentPhoneValid && formData.parentPhone && (
+                          <p className="text-sm text-red-500 mt-1">Please enter a valid phone number</p>
+                        )}
                       </div>
                     </div>
                     
