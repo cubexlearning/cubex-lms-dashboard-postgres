@@ -177,23 +177,9 @@ export default function AdminSettingsPage() {
     <AdminLayout>
       <div className="space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-semibold text-gray-900">Institution Settings</h1>
-            <p className="text-gray-600 mt-1">Configure your institution's global settings</p>
-          </div>
-          <Button 
-            onClick={() => {
-              console.log('Save button clicked')
-              console.log('Form values:', form.getValues())
-              console.log('Form errors:', form.formState.errors)
-              saveCurrentValues()
-            }} 
-            disabled={saving}
-            className="bg-blue-600 hover:bg-blue-700"
-          >
-            {saving ? 'Saving...' : 'Save Settings'}
-          </Button>
+        <div>
+          <h1 className="text-2xl font-semibold text-gray-900">Institution Settings</h1>
+          <p className="text-gray-600 mt-1">Configure your institution's global settings</p>
         </div>
 
         <form onSubmit={form.handleSubmit(onSubmit)}>
@@ -502,6 +488,16 @@ export default function AdminSettingsPage() {
                       </Select>
                     </div>
                   </div>
+                  
+                  <div className="flex justify-end pt-4">
+                    <Button 
+                      onClick={saveCurrentValues}
+                      disabled={saving}
+                      className="bg-blue-600 hover:bg-blue-700"
+                    >
+                      {saving ? 'Saving...' : 'Save Regional Settings'}
+                    </Button>
+                  </div>
                 </CardContent>
               </Card>
             </TabsContent>
@@ -549,6 +545,16 @@ export default function AdminSettingsPage() {
                         </SelectContent>
                       </Select>
                     </div>
+                  </div>
+                  
+                  <div className="flex justify-end pt-4">
+                    <Button 
+                      onClick={saveCurrentValues}
+                      disabled={saving}
+                      className="bg-blue-600 hover:bg-blue-700"
+                    >
+                      {saving ? 'Saving...' : 'Save Academic Settings'}
+                    </Button>
                   </div>
                 </CardContent>
               </Card>
@@ -643,6 +649,16 @@ export default function AdminSettingsPage() {
                       </div>
                     </div>
                   </div>
+                  
+                  <div className="flex justify-end pt-4">
+                    <Button 
+                      onClick={saveCurrentValues}
+                      disabled={saving}
+                      className="bg-blue-600 hover:bg-blue-700"
+                    >
+                      {saving ? 'Saving...' : 'Save Business Settings'}
+                    </Button>
+                  </div>
                 </CardContent>
               </Card>
             </TabsContent>
@@ -707,6 +723,16 @@ export default function AdminSettingsPage() {
                       {...form.register('cancellationNoticeHours', { valueAsNumber: true })}
                       placeholder="4"
                     />
+                  </div>
+                  
+                  <div className="flex justify-end pt-4">
+                    <Button 
+                      onClick={saveCurrentValues}
+                      disabled={saving}
+                      className="bg-blue-600 hover:bg-blue-700"
+                    >
+                      {saving ? 'Saving...' : 'Save System Settings'}
+                    </Button>
                   </div>
                 </CardContent>
               </Card>
@@ -779,6 +805,16 @@ export default function AdminSettingsPage() {
                         </div>
                       </div>
                     </div>
+                  </div>
+                  
+                  <div className="flex justify-end pt-4">
+                    <Button 
+                      onClick={saveCurrentValues}
+                      disabled={saving}
+                      className="bg-blue-600 hover:bg-blue-700"
+                    >
+                      {saving ? 'Saving...' : 'Save Communication Settings'}
+                    </Button>
                   </div>
                 </CardContent>
               </Card>
