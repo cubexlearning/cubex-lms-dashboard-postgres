@@ -2,6 +2,10 @@
 
 import { useState } from "react"
 import { useSession } from "next-auth/react"
+import { useForm } from "react-hook-form"
+import { zodResolver } from "@hookform/resolvers/zod"
+import * as z from "zod"
+import { isValidPhoneNumber } from "libphonenumber-js"
 import {
   Dialog,
   DialogContent,
@@ -31,43 +35,200 @@ interface AddUserDialogProps {
   onSuccess: () => void
 }
 
+// Zod validation schema
+const addUserSchema = z.object({
+  email: z.string()
+    .min(1, "Email is required")
+    .max(100, "Email must not exceed 100 characters")
+    .email("Invalid email address")
+    .toLowerCase(),
+  phone: z.string()
+    .min(1, "Phone is required")
+    .refine((val) => {
+      try {
+        return isValidPhoneNumber(val)
+      } catch {
+        return false
+      }
+    }, "Invalid phone number format"),
+  role: z.string().min(1, "Role is required"),
+  status: z.enum(["ACTIVE", "INACTIVE", "SUSPENDED"]),
+  firstName: z.string()
+    .min(1, "First name is required")
+    .min(2, "First name must be at least 2 characters")
+    .max(50, "First name must not exceed 50 characters")
+    .regex(/^[a-zA-Z\s'-]+$/, "First name can only contain letters, spaces, hyphens, and apostrophes"),
+  lastName: z.string()
+    .min(1, "Last name is required")
+    .min(2, "Last name must be at least 2 characters")
+    .max(50, "Last name must not exceed 50 characters")
+    .regex(/^[a-zA-Z\s'-]+$/, "Last name can only contain letters, spaces, hyphens, and apostrophes"),
+  dateOfBirth: z.string().optional(),
+  joinedDate: z.string().min(1, "Joined date is required"),
+  bio: z.string()
+    .max(500, "Bio must not exceed 500 characters")
+    .optional(),
+  
+  // Tutor fields
+  qualifications: z.array(
+    z.string()
+      .min(2, "Qualification must be at least 2 characters")
+      .max(100, "Qualification must not exceed 100 characters")
+  )
+    .max(5, "Maximum 5 qualifications allowed")
+    .default([]),
+  qualificationInput: z.string()
+    .max(100, "Qualification must not exceed 100 characters")
+    .default(""),
+  experience: z.string()
+    .refine((val) => {
+      if (!val) return true // Allow empty for non-tutors
+      const num = parseInt(val)
+      return !isNaN(num) && num >= 0 && num <= 50
+    }, "Experience must be between 0 and 50 years")
+    .optional(),
+  specializations: z.array(
+    z.string()
+      .min(2, "Specialization must be at least 2 characters")
+      .max(100, "Specialization must not exceed 100 characters")
+  )
+    .max(5, "Maximum 5 specializations allowed")
+    .default([]),
+  specializationInput: z.string()
+    .max(100, "Specialization must not exceed 100 characters")
+    .default(""),
+  hourlyRate: z.string()
+    .refine((val) => {
+      if (!val) return true
+      const num = parseFloat(val)
+      return !isNaN(num) && num >= 0 && num <= 10000
+    }, "Hourly rate must be between 0 and 10000")
+    .optional(),
+  
+  // Student fields
+  ageGroup: z.string().optional(),
+  parentName: z.string()
+    .max(100, "Parent name must not exceed 100 characters")
+    .regex(/^[a-zA-Z\s'-]*$/, "Parent name can only contain letters, spaces, hyphens, and apostrophes")
+    .optional(),
+  parentEmail: z.string()
+    .max(100, "Email must not exceed 100 characters")
+    .email("Invalid email")
+    .toLowerCase()
+    .optional()
+    .or(z.literal("")),
+  parentPhone: z.string()
+    .refine((val) => {
+      if (!val) return true
+      try {
+        return isValidPhoneNumber(val)
+      } catch {
+        return false
+      }
+    }, "Invalid phone number format")
+    .optional(),
+  address: z.string()
+    .max(200, "Address must not exceed 200 characters")
+    .optional(),
+  emergencyContact: z.string()
+    .refine((val) => {
+      if (!val) return true
+      try {
+        return isValidPhoneNumber(val)
+      } catch {
+        return false
+      }
+    }, "Invalid phone number format")
+    .optional(),
+  guardianRelation: z.string()
+    .max(50, "Relation must not exceed 50 characters")
+    .regex(/^[a-zA-Z\s'-]*$/, "Relation can only contain letters, spaces, hyphens, and apostrophes")
+    .optional(),
+}).refine((data) => {
+  // If role is STUDENT, ageGroup is required
+  if (data.role === 'STUDENT' && !data.ageGroup) {
+    return false
+  }
+  return true
+}, {
+  message: "Age group is required for students",
+  path: ["ageGroup"]
+}).refine((data) => {
+  // If role is TUTOR, qualifications are required
+  if (data.role === 'TUTOR' && data.qualifications.length === 0) {
+    return false
+  }
+  return true
+}, {
+  message: "At least one qualification is required for tutors",
+  path: ["qualificationInput"]
+}).refine((data) => {
+  // If role is TUTOR, specializations are required
+  if (data.role === 'TUTOR' && data.specializations.length === 0) {
+    return false
+  }
+  return true
+}, {
+  message: "At least one specialization is required for tutors",
+  path: ["specializationInput"]
+}).refine((data) => {
+  // If role is TUTOR, experience is required
+  if (data.role === 'TUTOR' && !data.experience) {
+    return false
+  }
+  return true
+}, {
+  message: "Experience is required for tutors",
+  path: ["experience"]
+})
+
+type AddUserFormData = z.infer<typeof addUserSchema>
+
 export function AddUserDialog({ open, onOpenChange, onSuccess }: AddUserDialogProps) {
   const { data: session } = useSession()
-  const [loading, setLoading] = useState(false)
   const [selectedRole, setSelectedRole] = useState<string>("")
   const [credentials, setCredentials] = useState<{ email: string; password: string } | null>(null)
   const [passwordCopied, setPasswordCopied] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
-  const [errors, setErrors] = useState<Record<string, string>>({})
 
-  const [formData, setFormData] = useState({
-    email: "",
-    phone: "",
-    role: "",
-    status: "ACTIVE",
-    firstName: "",
-    lastName: "",
-    dateOfBirth: "",
-    joinedDate: new Date().toISOString().split('T')[0], // Default to today
-    bio: "",
-    
-    // Tutor fields
-    qualifications: [] as string[],
-    qualificationInput: "",
-    experience: "",
-    specializations: [] as string[],
-    specializationInput: "",
-    hourlyRate: "",
-    
-    // Student fields
-    ageGroup: "",
-    parentName: "",
-    parentEmail: "",
-    parentPhone: "",
-    address: "",
-    emergencyContact: "",
-    guardianRelation: "",
+  const form = useForm<AddUserFormData>({
+    resolver: zodResolver(addUserSchema),
+    defaultValues: {
+      email: "",
+      phone: "",
+      role: "",
+      status: "ACTIVE",
+      firstName: "",
+      lastName: "",
+      dateOfBirth: "",
+      joinedDate: new Date().toISOString().split('T')[0], // Default to today
+      bio: "",
+      qualifications: [],
+      qualificationInput: "",
+      experience: "",
+      specializations: [],
+      specializationInput: "",
+      hourlyRate: "",
+      ageGroup: "",
+      parentName: "",
+      parentEmail: "",
+      parentPhone: "",
+      address: "",
+      emergencyContact: "",
+      guardianRelation: "",
+    },
+    mode: "onChange"
   })
+
+  const { handleSubmit, reset, setValue: _setValue, watch, setError, formState: { errors, isSubmitting } } = form
+
+  const setValue = (key: keyof AddUserFormData , value: any) => {
+    _setValue(key, value,{
+      shouldDirty:true,
+      shouldTouch:true,
+      shouldValidate:true
+    })
+  }
 
   const canAddRole = (role: string) => {
     if (session?.user.role === 'SUPER_ADMIN') {
@@ -79,163 +240,40 @@ export function AddUserDialog({ open, onOpenChange, onSuccess }: AddUserDialogPr
     return false
   }
 
-  // Validation functions
-  const validateEmail = (email: string) => {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-    if (!email) return "Email is required"
-    if (!emailRegex.test(email)) return "Please enter a valid email address"
-    return ""
-  }
-
-  const validatePhone = (phone: string) => {
-    if (!phone) return "Phone number is required"
-    
-    // Remove all non-digit characters except + at the beginning
-    const cleaned = phone.replace(/[^\d+]/g, '')
-    
-    // Check if it starts with + (international) or is a regular number
-    const phoneRegex = /^(\+[1-9]\d{0,14}|\d{7,15})$/
-    
-    if (!phoneRegex.test(cleaned)) {
-      return "Please enter a valid phone number (7-15 digits, optionally starting with +)"
-    }
-    
-    return ""
-  }
-
-  const validateName = (name: string, fieldName: string) => {
-    if (!name) return `${fieldName} is required`
-    if (name.trim().length < 1) return `${fieldName} must be at least 1 character`
-    if (name.trim().length > 50) return `${fieldName} must be less than 50 characters`
-    return ""
-  }
-
-  const validateDate = (date: string, fieldName: string, isRequired: boolean = false) => {
-    if (!date) return isRequired ? `${fieldName} is required` : ""
-    const dateObj = new Date(date)
-    const today = new Date()
-    if (isNaN(dateObj.getTime())) return "Please enter a valid date"
-    if (dateObj > today) return `${fieldName} cannot be in the future`
-    return ""
-  }
-
-  const validateAgeGroup = (ageGroup: string) => {
-    if (!ageGroup) return "Age group is required for students"
-    return ""
-  }
-
-  const validateParentInfo = (parentName: string, parentEmail: string, parentPhone: string, studentEmail?: string) => {
-    const errors: string[] = []
-    
-    // Parent email is now optional - can be empty or same as student email
-    if (parentEmail && parentEmail !== studentEmail) {
-      const emailError = validateEmail(parentEmail)
-      if (emailError) errors.push(emailError)
-    }
-    
-    // Parent phone is required when parent name is provided
-    if (parentName && !parentPhone) {
-      errors.push("Parent phone is required when parent name is provided")
-    }
-    if (parentPhone) {
-      const phoneError = validatePhone(parentPhone)
-      if (phoneError) errors.push(phoneError)
-    }
-    return errors.join(", ")
-  }
-
-  const validateEmergencyContact = (emergencyContact: string) => {
-    if (!emergencyContact) return "" // Optional field
-    return validatePhone(emergencyContact) // Use same phone validation
-  }
-
-  const validateForm = () => {
-    const newErrors: Record<string, string> = {}
-
-    // Basic validation
-    newErrors.firstName = validateName(formData.firstName, "First name")
-    newErrors.lastName = validateName(formData.lastName, "Last name")
-    newErrors.email = validateEmail(formData.email)
-    newErrors.phone = validatePhone(formData.phone)
-    newErrors.role = !formData.role ? "Role is required" : ""
-    newErrors.dateOfBirth = validateDate(formData.dateOfBirth, "Date of birth")
-    newErrors.joinedDate = validateDate(formData.joinedDate, "Joined date", true)
-
-    // Role-specific validation
-    if (formData.role === 'STUDENT') {
-      newErrors.ageGroup = validateAgeGroup(formData.ageGroup)
-      const parentError = validateParentInfo(formData.parentName, formData.parentEmail, formData.parentPhone, formData.email)
-      if (parentError) {
-        newErrors.parentInfo = parentError
-      }
-      newErrors.emergencyContact = validateEmergencyContact(formData.emergencyContact)
-    }
-
-    // Experience validation for tutors
-    if (formData.role === 'TUTOR' && formData.experience) {
-      const experience = parseInt(formData.experience)
-      if (isNaN(experience) || experience < 0 || experience > 50) {
-        newErrors.experience = "Experience must be between 0 and 50 years"
-      }
-    }
-
-    setErrors(newErrors)
-    return Object.values(newErrors).every(error => error === "")
-  }
-
-  const clearFieldError = (fieldName: string) => {
-    if (errors[fieldName]) {
-      setErrors(prev => ({ ...prev, [fieldName]: "" }))
-    }
-  }
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    
-    // Clear previous errors
-    setErrors({})
-    
-    // Validate form before submission
-    if (!validateForm()) {
-      toast.error('Please fix the validation errors before submitting')
-      return
-    }
-
-    setLoading(true)
-
+  const onSubmit = async (data: AddUserFormData) => {
     try {
       // Dynamically calculate full name from firstName and lastName
-      const fullName = `${formData.firstName.trim()} ${formData.lastName.trim()}`.trim()
+      const fullName = `${data.firstName.trim()} ${data.lastName.trim()}`.trim()
       
       const payload: any = {
-        name: fullName || formData.email.split('@')[0], // Fallback to email username if no names provided
-        email: formData.email,
-        phone: formData.phone,
-        role: formData.role,
-        status: formData.status,
-        firstName: formData.firstName || undefined,
-        lastName: formData.lastName || undefined,
-        dateOfBirth: formData.dateOfBirth || undefined,
-        createdAt: formData.joinedDate ? new Date(formData.joinedDate).toISOString() : undefined,
-        bio: formData.bio || undefined,
+        name: fullName || data.email.split('@')[0], // Fallback to email username if no names provided
+        email: data.email,
+        phone: data.phone,
+        role: data.role,
+        status: data.status,
+        firstName: data.firstName || undefined,
+        lastName: data.lastName || undefined,
+        dateOfBirth: data.dateOfBirth || undefined,
+        createdAt: data.joinedDate ? new Date(data.joinedDate).toISOString() : undefined,
+        bio: data.bio || undefined,
       }
 
       // Add role-specific fields
-      if (formData.role === 'TUTOR') {
-        payload.qualifications = formData.qualifications
-        payload.experience = formData.experience ? parseInt(formData.experience) : undefined
-        payload.specializations = formData.specializations
+      if (data.role === 'TUTOR') {
+        payload.qualifications = data.qualifications
+        payload.experience = data.experience ? parseInt(data.experience) : undefined
+        payload.specializations = data.specializations
         payload.hourlyRate = 0 // Default value
       }
 
-      if (formData.role === 'STUDENT') {
-        payload.ageGroup = formData.ageGroup || undefined
-        payload.parentName = formData.parentName || undefined
-        payload.parentEmail = formData.parentEmail || undefined
-        payload.parentPhone = formData.parentPhone || undefined
-        payload.address = formData.address || undefined
-        payload.emergencyContact = formData.emergencyContact || undefined
-        payload.guardianRelation = formData.guardianRelation || undefined
+      if (data.role === 'STUDENT') {
+        payload.ageGroup = data.ageGroup || undefined
+        payload.parentName = data.parentName || undefined
+        payload.parentEmail = data.parentEmail || undefined
+        payload.parentPhone = data.parentPhone || undefined
+        payload.address = data.address || undefined
+        payload.emergencyContact = data.emergencyContact || undefined
+        payload.guardianRelation = data.guardianRelation || undefined
       }
 
       const response = await fetch('/api/users', {
@@ -244,23 +282,17 @@ export function AddUserDialog({ open, onOpenChange, onSuccess }: AddUserDialogPr
         body: JSON.stringify(payload),
       })
 
-      const data = await response.json()
+      const responseData = await response.json()
 
       if (!response.ok) {
-        // Handle backend validation errors
-        if (data.errors && typeof data.errors === 'object') {
-          setErrors(data.errors)
-          toast.error('Please fix the validation errors')
-          return
-        }
-        throw new Error(data.error || 'Failed to create user')
+        throw new Error(responseData.error || 'Failed to create user')
       }
 
       // Show credentials
-      if (data.credentials) {
+      if (responseData.credentials) {
         setCredentials({
-          email: data.credentials.email,
-          password: data.credentials.temporaryPassword
+          email: responseData.credentials.email,
+          password: responseData.credentials.temporaryPassword
         })
         toast.success('User created successfully! Please save the credentials.')
       } else {
@@ -272,13 +304,17 @@ export function AddUserDialog({ open, onOpenChange, onSuccess }: AddUserDialogPr
     } catch (error: any) {
       console.error('Error creating user:', error)
       toast.error(error.message || 'Failed to create user')
-    } finally {
-      setLoading(false)
+      if(error.message === "Email already exists"){
+        setError("email", {
+          type: "manual",
+          message: "Email already exists"
+        })
+      }
     }
   }
 
   const handleClose = () => {
-    setFormData({
+    reset({
       email: "",
       phone: "",
       role: "",
@@ -306,7 +342,6 @@ export function AddUserDialog({ open, onOpenChange, onSuccess }: AddUserDialogPr
     setCredentials(null)
     setPasswordCopied(false)
     setShowPassword(false)
-    setErrors({})
     onOpenChange(false)
   }
 
@@ -322,37 +357,73 @@ export function AddUserDialog({ open, onOpenChange, onSuccess }: AddUserDialogPr
   }
 
   const addQualification = () => {
-    if (formData.qualificationInput.trim()) {
-      setFormData({
-        ...formData,
-        qualifications: [...formData.qualifications, formData.qualificationInput.trim()],
-        qualificationInput: ""
-      })
+    const qualificationInput = watch("qualificationInput")
+    const qualifications = watch("qualifications")
+    
+    if (qualifications.length >= 5) {
+      toast.error("Maximum 5 qualifications allowed")
+      return
     }
+    
+    const trimmedInput = qualificationInput.trim()
+    
+    if (!trimmedInput) {
+      toast.error("Qualification cannot be empty")
+      return
+    }
+    
+    if (trimmedInput.length < 2) {
+      toast.error("Qualification must be at least 2 characters")
+      return
+    }
+    
+    if (trimmedInput.length > 100) {
+      toast.error("Qualification must not exceed 100 characters")
+      return
+    }
+    
+    setValue("qualifications", [...qualifications, trimmedInput])
+    setValue("qualificationInput", "")
   }
 
   const removeQualification = (index: number) => {
-    setFormData({
-      ...formData,
-      qualifications: formData.qualifications.filter((_, i) => i !== index)
-    })
+    const qualifications = watch("qualifications")
+    setValue("qualifications", qualifications.filter((_, i) => i !== index))
   }
 
   const addSpecialization = () => {
-    if (formData.specializationInput.trim()) {
-      setFormData({
-        ...formData,
-        specializations: [...formData.specializations, formData.specializationInput.trim()],
-        specializationInput: ""
-      })
+    const specializationInput = watch("specializationInput")
+    const specializations = watch("specializations")
+    
+    if (specializations.length >= 5) {
+      toast.error("Maximum 5 specializations allowed")
+      return
     }
+    
+    const trimmedInput = specializationInput.trim()
+    
+    if (!trimmedInput) {
+      toast.error("Specialization cannot be empty")
+      return
+    }
+    
+    if (trimmedInput.length < 2) {
+      toast.error("Specialization must be at least 2 characters")
+      return
+    }
+    
+    if (trimmedInput.length > 100) {
+      toast.error("Specialization must not exceed 100 characters")
+      return
+    }
+    
+    setValue("specializations", [...specializations, trimmedInput])
+    setValue("specializationInput", "")
   }
 
   const removeSpecialization = (index: number) => {
-    setFormData({
-      ...formData,
-      specializations: formData.specializations.filter((_, i) => i !== index)
-    })
+    const specializations = watch("specializations")
+    setValue("specializations", specializations.filter((_, i) => i !== index))
   }
 
   // If credentials are shown, display them
@@ -444,7 +515,7 @@ export function AddUserDialog({ open, onOpenChange, onSuccess }: AddUserDialogPr
           </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} noValidate>
+        <form onSubmit={handleSubmit(onSubmit)} noValidate>
           <div className="space-y-4 py-4">
             {/* Basic Information */}
             <div className="space-y-4">
@@ -455,15 +526,14 @@ export function AddUserDialog({ open, onOpenChange, onSuccess }: AddUserDialogPr
                   <Label htmlFor="firstName">First Name *</Label>
                   <Input
                     id="firstName"
-                    value={formData.firstName}
-                    onChange={(e) => {
-                      setFormData({ ...formData, firstName: e.target.value })
-                      clearFieldError('firstName')
-                    }}
+                    value={watch("firstName")}
+                    onChange={(e) => setValue("firstName", e.target.value)}
                     className={errors.firstName ? "border-red-500" : ""}
+                    minLength={2}
+                    maxLength={50}
                   />
                   {errors.firstName && (
-                    <p className="text-sm text-red-500 mt-1">{errors.firstName}</p>
+                    <p className="text-sm text-red-500 mt-1">{errors.firstName.message}</p>
                   )}
                 </div>
 
@@ -471,12 +541,14 @@ export function AddUserDialog({ open, onOpenChange, onSuccess }: AddUserDialogPr
                   <Label htmlFor="lastName">Last Name *</Label>
                   <Input
                     id="lastName"
-                    value={formData.lastName}
-                    onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
+                    value={watch("lastName")}
+                    onChange={(e) => setValue("lastName", e.target.value)}
                     className={errors.lastName ? "border-red-500" : ""}
+                    minLength={2}
+                    maxLength={50}
                   />
                   {errors.lastName && (
-                    <p className="text-sm text-red-500 mt-1">{errors.lastName}</p>
+                    <p className="text-sm text-red-500 mt-1">{errors.lastName.message}</p>
                   )}
                 </div>
               </div>
@@ -484,9 +556,9 @@ export function AddUserDialog({ open, onOpenChange, onSuccess }: AddUserDialogPr
               <div>
                 <Label htmlFor="role">Role *</Label>
                 <Select
-                  value={formData.role}
+                  value={watch("role")}
                   onValueChange={(value) => {
-                    setFormData({ ...formData, role: value })
+                    setValue("role", value)
                     setSelectedRole(value)
                   }}
                 >
@@ -502,7 +574,7 @@ export function AddUserDialog({ open, onOpenChange, onSuccess }: AddUserDialogPr
                   </SelectContent>
                 </Select>
                 {errors.role && (
-                  <p className="text-sm text-red-500 mt-1">{errors.role}</p>
+                  <p className="text-sm text-red-500 mt-1">{errors.role.message}</p>
                 )}
               </div>
 
@@ -512,15 +584,13 @@ export function AddUserDialog({ open, onOpenChange, onSuccess }: AddUserDialogPr
                   <Input
                     id="email"
                     type="email"
-                    value={formData.email}
-                    onChange={(e) => {
-                      setFormData({ ...formData, email: e.target.value })
-                      clearFieldError('email')
-                    }}
+                    value={watch("email")}
+                    onChange={(e) => setValue("email", e.target.value)}
                     className={errors.email ? "border-red-500" : ""}
+                    maxLength={100}
                   />
                   {errors.email && (
-                    <p className="text-sm text-red-500 mt-1">{errors.email}</p>
+                    <p className="text-sm text-red-500 mt-1">{errors.email.message}</p>
                   )}
                 </div>
 
@@ -528,15 +598,12 @@ export function AddUserDialog({ open, onOpenChange, onSuccess }: AddUserDialogPr
                   <Label htmlFor="phone">Phone *</Label>
                   <Input
                     id="phone"
-                    value={formData.phone}
-                    onChange={(e) => {
-                      setFormData({ ...formData, phone: e.target.value })
-                      clearFieldError('phone')
-                    }}
+                    value={watch("phone")}
+                    onChange={(e) => setValue("phone", e.target.value)}
                     className={errors.phone ? "border-red-500" : ""}
                   />
                   {errors.phone && (
-                    <p className="text-sm text-red-500 mt-1">{errors.phone}</p>
+                    <p className="text-sm text-red-500 mt-1">{errors.phone.message}</p>
                   )}
                 </div>
               </div>
@@ -546,14 +613,14 @@ export function AddUserDialog({ open, onOpenChange, onSuccess }: AddUserDialogPr
                 <Input
                   id="dateOfBirth"
                   type="date"
-                  value={formData.dateOfBirth}
-                  onChange={(e) => setFormData({ ...formData, dateOfBirth: e.target.value })}
+                  value={watch("dateOfBirth")}
+                  onChange={(e) => setValue("dateOfBirth", e.target.value)}
                   max={new Date().toISOString().split('T')[0]}
                   min="1900-01-01"
                   className={errors.dateOfBirth ? "border-red-500" : ""}
                 />
                 {errors.dateOfBirth && (
-                  <p className="text-sm text-red-500 mt-1">{errors.dateOfBirth}</p>
+                  <p className="text-sm text-red-500 mt-1">{errors.dateOfBirth.message}</p>
                 )}
               </div>
 
@@ -562,14 +629,14 @@ export function AddUserDialog({ open, onOpenChange, onSuccess }: AddUserDialogPr
                 <Input
                   id="joinedDate"
                   type="date"
-                  value={formData.joinedDate}
-                  onChange={(e) => setFormData({ ...formData, joinedDate: e.target.value })}
+                  value={watch("joinedDate")}
+                  onChange={(e) => setValue("joinedDate", e.target.value)}
                   max={new Date().toISOString().split('T')[0]}
                   min="2000-01-01"
                   className={errors.joinedDate ? "border-red-500" : ""}
                 />
                 {errors.joinedDate && (
-                  <p className="text-sm text-red-500 mt-1">{errors.joinedDate}</p>
+                  <p className="text-sm text-red-500 mt-1">{errors.joinedDate.message}</p>
                 )}
                 <p className="text-xs text-gray-500 mt-1">
                   Date when the user joined the organization
@@ -583,19 +650,36 @@ export function AddUserDialog({ open, onOpenChange, onSuccess }: AddUserDialogPr
                 <h3 className="font-medium text-sm">Tutor Information</h3>
                 
                 <div>
-                  <Label htmlFor="qualifications">Qualifications</Label>
+                  <Label htmlFor="qualifications">Qualifications * ({watch("qualifications").length}/5)</Label>
                   <div className="flex gap-2">
                     <Input
                       id="qualifications"
-                      value={formData.qualificationInput}
-                      onChange={(e) => setFormData({ ...formData, qualificationInput: e.target.value })}
+                      value={watch("qualificationInput")}
+                      onChange={(e) => setValue("qualificationInput", e.target.value)}
                       onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), addQualification())}
-                      placeholder="Add qualification and press Enter"
+                      placeholder="Add qualification and press Enter (min 2 chars)"
+                      minLength={2}
+                      maxLength={100}
+                      className={errors.qualificationInput ? "border-red-500" : ""}
+                      disabled={watch("qualifications").length >= 5}
                     />
-                    <Button type="button" onClick={addQualification} variant="outline">Add</Button>
+                    <Button 
+                      type="button" 
+                      onClick={addQualification} 
+                      variant="outline"
+                      disabled={watch("qualifications").length >= 5}
+                    >
+                      Add
+                    </Button>
                   </div>
+                  {errors.qualificationInput && (
+                    <p className="text-sm text-red-500 mt-1">{errors.qualificationInput.message}</p>
+                  )}
+                  {errors.qualifications && (
+                    <p className="text-sm text-red-500 mt-1">{errors.qualifications.message}</p>
+                  )}
                   <div className="flex flex-wrap gap-2 mt-2">
-                    {formData.qualifications.map((qual, index) => (
+                    {watch("qualifications").map((qual, index) => (
                       <div key={index} className="bg-blue-100 text-blue-800 px-2 py-1 rounded text-sm flex items-center gap-1">
                         {qual}
                         <button type="button" onClick={() => removeQualification(index)} className="text-blue-600 hover:text-blue-800">×</button>
@@ -605,19 +689,36 @@ export function AddUserDialog({ open, onOpenChange, onSuccess }: AddUserDialogPr
                 </div>
 
                 <div>
-                  <Label htmlFor="specializations">Specializations</Label>
+                  <Label htmlFor="specializations">Specializations * ({watch("specializations").length}/5)</Label>
                   <div className="flex gap-2">
                     <Input
                       id="specializations"
-                      value={formData.specializationInput}
-                      onChange={(e) => setFormData({ ...formData, specializationInput: e.target.value })}
+                      value={watch("specializationInput")}
+                      onChange={(e) => setValue("specializationInput", e.target.value)}
                       onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), addSpecialization())}
-                      placeholder="Add specialization and press Enter"
+                      placeholder="Add specialization and press Enter (min 2 chars)"
+                      minLength={2}
+                      maxLength={100}
+                      className={errors.specializationInput ? "border-red-500" : ""}
+                      disabled={watch("specializations").length >= 5}
                     />
-                    <Button type="button" onClick={addSpecialization} variant="outline">Add</Button>
+                    <Button 
+                      type="button" 
+                      onClick={addSpecialization} 
+                      variant="outline"
+                      disabled={watch("specializations").length >= 5}
+                    >
+                      Add
+                    </Button>
                   </div>
+                  {errors.specializationInput && (
+                    <p className="text-sm text-red-500 mt-1">{errors.specializationInput.message}</p>
+                  )}
+                  {errors.specializations && (
+                    <p className="text-sm text-red-500 mt-1">{errors.specializations.message}</p>
+                  )}
                   <div className="flex flex-wrap gap-2 mt-2">
-                    {formData.specializations.map((spec, index) => (
+                    {watch("specializations").map((spec, index) => (
                       <div key={index} className="bg-purple-100 text-purple-800 px-2 py-1 rounded text-sm flex items-center gap-1">
                         {spec}
                         <button type="button" onClick={() => removeSpecialization(index)} className="text-purple-600 hover:text-purple-800">×</button>
@@ -627,18 +728,20 @@ export function AddUserDialog({ open, onOpenChange, onSuccess }: AddUserDialogPr
                 </div>
 
                 <div>
-                  <Label htmlFor="experience">Experience (years)</Label>
+                  <Label htmlFor="experience">Experience (years) *</Label>
                   <Input
                     id="experience"
                     type="number"
-                    value={formData.experience}
-                    onChange={(e) => setFormData({ ...formData, experience: e.target.value })}
+                    value={watch("experience")}
+                    onChange={(e) => setValue("experience", e.target.value)}
                     className={errors.experience ? "border-red-500" : ""}
                     min="0"
                     max="50"
+                    step="1"
+                    required
                   />
                   {errors.experience && (
-                    <p className="text-sm text-red-500 mt-1">{errors.experience}</p>
+                    <p className="text-sm text-red-500 mt-1">{errors.experience.message}</p>
                   )}
                 </div>
               </div>
@@ -652,8 +755,8 @@ export function AddUserDialog({ open, onOpenChange, onSuccess }: AddUserDialogPr
                 <div>
                   <Label htmlFor="ageGroup">Age Group *</Label>
                   <Select
-                    value={formData.ageGroup}
-                    onValueChange={(value) => setFormData({ ...formData, ageGroup: value })}
+                    value={watch("ageGroup")}
+                    onValueChange={(value) => setValue("ageGroup", value)}
                   >
                     <SelectTrigger className={errors.ageGroup ? "border-red-500" : ""}>
                       <SelectValue placeholder="Select age group" />
@@ -666,7 +769,7 @@ export function AddUserDialog({ open, onOpenChange, onSuccess }: AddUserDialogPr
                     </SelectContent>
                   </Select>
                   {errors.ageGroup && (
-                    <p className="text-sm text-red-500 mt-1">{errors.ageGroup}</p>
+                    <p className="text-sm text-red-500 mt-1">{errors.ageGroup.message}</p>
                   )}
                 </div>
 
@@ -675,19 +778,27 @@ export function AddUserDialog({ open, onOpenChange, onSuccess }: AddUserDialogPr
                     <Label htmlFor="parentName">Parent/Guardian Name</Label>
                     <Input
                       id="parentName"
-                      value={formData.parentName}
-                      onChange={(e) => setFormData({ ...formData, parentName: e.target.value })}
+                      value={watch("parentName")}
+                      onChange={(e) => setValue("parentName", e.target.value)}
+                      maxLength={100}
                     />
+                    {errors.parentName && (
+                      <p className="text-sm text-red-500 mt-1">{errors.parentName.message}</p>
+                    )}
                   </div>
 
                   <div>
                     <Label htmlFor="guardianRelation">Relation</Label>
                     <Input
                       id="guardianRelation"
-                      value={formData.guardianRelation}
-                      onChange={(e) => setFormData({ ...formData, guardianRelation: e.target.value })}
+                      value={watch("guardianRelation")}
+                      onChange={(e) => setValue("guardianRelation", e.target.value)}
                       placeholder="e.g., Father, Mother"
+                      maxLength={50}
                     />
+                    {errors.guardianRelation && (
+                      <p className="text-sm text-red-500 mt-1">{errors.guardianRelation.message}</p>
+                    )}
                   </div>
                 </div>
 
@@ -697,13 +808,14 @@ export function AddUserDialog({ open, onOpenChange, onSuccess }: AddUserDialogPr
                     <Input
                       id="parentEmail"
                       type="email"
-                      value={formData.parentEmail}
-                      onChange={(e) => setFormData({ ...formData, parentEmail: e.target.value })}
+                      value={watch("parentEmail")}
+                      onChange={(e) => setValue("parentEmail", e.target.value)}
                       className={errors.parentEmail ? "border-red-500" : ""}
                       placeholder="Can be same as student email or left empty"
+                      maxLength={100}
                     />
                     {errors.parentEmail && (
-                      <p className="text-sm text-red-500 mt-1">{errors.parentEmail}</p>
+                      <p className="text-sm text-red-500 mt-1">{errors.parentEmail.message}</p>
                     )}
                     <p className="text-xs text-gray-500 mt-1">
                       Leave empty if parent doesn't have an email, or use student's email
@@ -714,45 +826,41 @@ export function AddUserDialog({ open, onOpenChange, onSuccess }: AddUserDialogPr
                     <Label htmlFor="parentPhone">Parent Phone</Label>
                     <Input
                       id="parentPhone"
-                      value={formData.parentPhone}
-                      onChange={(e) => setFormData({ ...formData, parentPhone: e.target.value })}
+                      value={watch("parentPhone")}
+                      onChange={(e) => setValue("parentPhone", e.target.value)}
                       className={errors.parentPhone ? "border-red-500" : ""}
                     />
                     {errors.parentPhone && (
-                      <p className="text-sm text-red-500 mt-1">{errors.parentPhone}</p>
+                      <p className="text-sm text-red-500 mt-1">{errors.parentPhone.message}</p>
                     )}
                   </div>
                 </div>
 
-                {errors.parentInfo && (
-                  <div className="bg-red-50 border border-red-200 rounded-md p-3">
-                    <p className="text-sm text-red-600">{errors.parentInfo}</p>
-                  </div>
-                )}
 
                 <div>
                   <Label htmlFor="address">Address</Label>
                   <Textarea
                     id="address"
-                    value={formData.address}
-                    onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                    value={watch("address")}
+                    onChange={(e) => setValue("address", e.target.value)}
                     rows={2}
+                    maxLength={200}
                   />
+                  {errors.address && (
+                    <p className="text-sm text-red-500 mt-1">{errors.address.message}</p>
+                  )}
                 </div>
 
                 <div>
                   <Label htmlFor="emergencyContact">Emergency Contact</Label>
                   <Input
                     id="emergencyContact"
-                    value={formData.emergencyContact}
-                    onChange={(e) => {
-                      setFormData({ ...formData, emergencyContact: e.target.value })
-                      clearFieldError('emergencyContact')
-                    }}
+                    value={watch("emergencyContact")}
+                    onChange={(e) => setValue("emergencyContact", e.target.value)}
                     className={errors.emergencyContact ? "border-red-500" : ""}
                   />
                   {errors.emergencyContact && (
-                    <p className="text-sm text-red-500 mt-1">{errors.emergencyContact}</p>
+                    <p className="text-sm text-red-500 mt-1">{errors.emergencyContact.message}</p>
                   )}
                 </div>
               </div>
@@ -762,18 +870,22 @@ export function AddUserDialog({ open, onOpenChange, onSuccess }: AddUserDialogPr
               <Label htmlFor="bio">Bio / Notes</Label>
               <Textarea
                 id="bio"
-                value={formData.bio}
-                onChange={(e) => setFormData({ ...formData, bio: e.target.value })}
+                value={watch("bio")}
+                onChange={(e) => setValue("bio", e.target.value)}
                 rows={2}
                 placeholder="Additional information..."
+                maxLength={500}
               />
+              {errors.bio && (
+                <p className="text-sm text-red-500 mt-1">{errors.bio.message}</p>
+              )}
             </div>
 
             <div>
               <Label htmlFor="status">Status</Label>
               <Select
-                value={formData.status}
-                onValueChange={(value) => setFormData({ ...formData, status: value })}
+                value={watch("status")}
+                onValueChange={(value) => setValue("status", value as "ACTIVE" | "INACTIVE" | "SUSPENDED")}
               >
                 <SelectTrigger>
                   <SelectValue />
@@ -787,11 +899,11 @@ export function AddUserDialog({ open, onOpenChange, onSuccess }: AddUserDialogPr
           </div>
 
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={handleClose} disabled={loading}>
+            <Button type="button" variant="outline" onClick={handleClose} disabled={isSubmitting}>
               Cancel
             </Button>
-            <Button type="submit" disabled={loading}>
-              {loading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+            <Button type="submit" disabled={isSubmitting}>
+              {isSubmitting && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
               Create User
             </Button>
           </DialogFooter>

@@ -6,6 +6,7 @@ import { Analytics } from '@vercel/analytics/next'
 import { ClientSessionProvider } from '@/components/session-provider'
 import { SettingsProvider } from '@/contexts/SettingsContext'
 import { Poppins } from 'next/font/google'
+import { Toaster } from '@/components/ui/sonner'
 
 const poppins = Poppins({
   subsets: ['latin'],
@@ -37,6 +38,7 @@ export default function RootLayout({
         `}</style>
       </head>
       <body>
+        <Toaster/>
         <ClientSessionProvider>
           <SettingsProvider>
             {children}
