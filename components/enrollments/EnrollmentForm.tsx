@@ -13,6 +13,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { toast } from 'sonner'
 import { Loader2, AlertCircle, CheckCircle2, User, BookOpen, CreditCard } from 'lucide-react'
 import { PricingCalculator, PricingBreakdown } from './PricingCalculator'
+import { isValidPhoneNumber } from "libphonenumber-js";
 
 interface EnrollmentFormProps {
   onSuccess: () => void
@@ -59,6 +60,13 @@ export function EnrollmentForm({ onSuccess, onCancel }: EnrollmentFormProps) {
   const [emailExists, setEmailExists] = useState(false)
   const [existingStudentData, setExistingStudentData] = useState<Student | null>(null)
   
+
+  const [studentPhoneValid, setStudentPhoneValid] = useState(true)
+  const [parentPhoneValid, setParentPhoneValid] = useState(true)
+  const [studentEmailValid, setStudentEmailValid] = useState(true)
+  const [parentEmailValid, setParentEmailValid] = useState(true)
+  const [validationErrors, setValidationErrors] = useState<{[key: string]: string}>({})
+
   // Form data
   const [formData, setFormData] = useState({
     // Student data
@@ -201,6 +209,11 @@ export function EnrollmentForm({ onSuccess, onCancel }: EnrollmentFormProps) {
       setEmailCheckLoading(false)
     }
   }
+
+  const checkPhoneNumber = (phone: string) => {
+    if (!phone) return false;
+    return isValidPhoneNumber(phone);
+  };
 
   // Update available formats when course changes
   useEffect(() => {
@@ -409,56 +422,111 @@ export function EnrollmentForm({ onSuccess, onCancel }: EnrollmentFormProps) {
     }
   }
 
+  // Email validation helper
+  const isValidEmail = (email: string) => {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+  }
+
   // Handle form submission
   const handleSubmit = async () => {
     console.log('Form submission started', { studentMode, formData, selectedStudentId, emailExists })
     
-    // Validation
+    // Clear previous validation errors
+    setValidationErrors({})
+    const errors: {[key: string]: string} = {}
+    const studentErrors: string[] = []
+    const courseErrors: string[] = []
+    const paymentErrors: string[] = []
+    
+    // STUDENT SECTION VALIDATION
     if (studentMode === 'new') {
-      if (!formData.studentName) {
-        toast.error('Student name is required')
-        setCurrentTab('student')
-        return
+      if (!formData.studentName || formData.studentName.trim() === '') {
+        errors.studentName = 'Student name is required'
+        studentErrors.push('Student name')
       }
-      if (!formData.studentEmail) {
-        toast.error('Student email is required')
-        setCurrentTab('student')
-        return
+      if (!formData.studentEmail || formData.studentEmail.trim() === '') {
+        errors.studentEmail = 'Student email is required'
+        studentErrors.push('Student email')
+      } else if (!isValidEmail(formData.studentEmail)) {
+        errors.studentEmail = 'Please enter a valid email address'
+        studentErrors.push('Valid student email')
       }
-      if (!formData.studentPhone) {
-        toast.error('Student phone is required')
-        setCurrentTab('student')
-        return
+      if (!formData.studentPhone || formData.studentPhone.trim() === '') {
+        errors.studentPhone = 'Student phone is required'
+        studentErrors.push('Student phone')
+      } else if (!checkPhoneNumber(formData.studentPhone)) {
+        errors.studentPhone = 'Please enter a valid phone number'
+        studentErrors.push('Valid student phone')
+      }
+      if (formData.parentPhone && !checkPhoneNumber(formData.parentPhone)) {
+        errors.parentPhone = 'Please enter a valid parent phone number'
+        studentErrors.push('Valid parent phone')
+      }
+      if (formData.parentEmail && formData.parentEmail.trim() !== '' && !isValidEmail(formData.parentEmail)) {
+        errors.parentEmail = 'Please enter a valid parent email address'
+        studentErrors.push('Valid parent email')
       }
       if (!formData.ageGroup) {
-        toast.error('Age group is required')
-        setCurrentTab('student')
-        return
+        errors.ageGroup = 'Age group is required'
+        studentErrors.push('Age group')
       }
       
       // Check if email exists and student chose to use existing
       if (emailExists && existingStudentData) {
-        toast.error(`Email already exists for ${existingStudentData.name}. Please use a different email or switch to "Select Existing Student" mode.`)
-        setCurrentTab('student')
-        return
+        errors.studentEmail = 'Email already exists'
+        studentErrors.push('Different email (already exists)')
       }
     } else {
       if (!selectedStudentId) {
-        toast.error('Please select a student from the dropdown')
-        setCurrentTab('student')
-        return
+        errors.selectedStudent = 'Please select a student'
+        studentErrors.push('Student selection')
       }
     }
     
+    // COURSE SECTION VALIDATION
     if (!formData.courseId) {
-      toast.error('Please select a course')
-      setCurrentTab('course')
-      return
+      errors.courseId = 'Course is required'
+      courseErrors.push('Course selection')
     }
     
+    if (!formData.format) {
+      errors.format = 'Format is required'
+      courseErrors.push('Course format (One-to-One or Group)')
+    }
+    
+    // PAYMENT SECTION VALIDATION
     if (!formData.basePrice || formData.basePrice <= 0) {
-      toast.error('Base price must be greater than 0. Please check course pricing.')
-      setCurrentTab('payment')
+      errors.basePrice = 'Invalid pricing'
+      paymentErrors.push('Valid course pricing')
+    }
+    
+    if (!formData.firstPaymentMethod) {
+      errors.paymentMethod = 'Payment method is required'
+      paymentErrors.push('Payment method')
+    }
+    
+    // If there are any errors, stop submission and show appropriate message
+    if (Object.keys(errors).length > 0) {
+      setValidationErrors(errors)
+      
+      // Determine which tab to show based on error priority
+      if (studentErrors.length > 0) {
+        setCurrentTab('student')
+        toast.error(`Student section has ${studentErrors.length} error${studentErrors.length > 1 ? 's' : ''}: ${studentErrors.join(', ')}`, {
+          duration: 6000
+        })
+      } else if (courseErrors.length > 0) {
+        setCurrentTab('course')
+        toast.error(`Course section has ${courseErrors.length} error${courseErrors.length > 1 ? 's' : ''}: ${courseErrors.join(', ')}`, {
+          duration: 6000
+        })
+      } else if (paymentErrors.length > 0) {
+        setCurrentTab('payment')
+        toast.error(`Payment section has ${paymentErrors.length} error${paymentErrors.length > 1 ? 's' : ''}: ${paymentErrors.join(', ')}`, {
+          duration: 6000
+        })
+      }
+      
       return
     }
 
@@ -469,13 +537,15 @@ export function EnrollmentForm({ onSuccess, onCancel }: EnrollmentFormProps) {
       
       // Step 1: Create student if new
       if (studentMode === 'new') {
-        const studentResponse = await fetch('/api/students', {
+        const studentResponse = await fetch('/api/users', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             name: formData.studentName,
             email: formData.studentEmail,
             phone: formData.studentPhone,
+            role: 'STUDENT',
+            status: 'ACTIVE',
             ageGroup: formData.ageGroup,
             dateOfBirth: formData.dateOfBirth || undefined,
             parentName: formData.parentName || undefined,
@@ -496,13 +566,11 @@ export function EnrollmentForm({ onSuccess, onCancel }: EnrollmentFormProps) {
         
         studentId = studentResult.data.id
         
-        // Show credentials to admin
-        if (studentResult.credentials) {
-          toast.success(
-            `Student created! Login: ${studentResult.credentials.email} | Password: ${studentResult.credentials.temporaryPassword}`,
-            { duration: 10000 }
-          )
-        }
+        // Note: Onboarding email is automatically sent by /api/users for ACTIVE students
+        toast.success(
+          `Student created successfully! Onboarding email sent to ${formData.studentEmail}`,
+          { duration: 5000 }
+        )
       }
       
       // Step 2: Create enrollment
@@ -638,9 +706,18 @@ export function EnrollmentForm({ onSuccess, onCancel }: EnrollmentFormProps) {
                       <Input
                         id="studentName"
                         value={formData.studentName}
-                        onChange={(e) => setFormData({ ...formData, studentName: e.target.value })}
+                        onChange={(e) => {
+                          setFormData({ ...formData, studentName: e.target.value })
+                          if (validationErrors.studentName) {
+                            setValidationErrors(prev => ({ ...prev, studentName: '' }))
+                          }
+                        }}
                         placeholder="John Doe"
+                        className={validationErrors.studentName ? 'border-red-500' : ''}
                       />
+                      {validationErrors.studentName && (
+                        <p className="text-sm text-red-500 mt-1">{validationErrors.studentName}</p>
+                      )}
                     </div>
                     
                     <div className="space-y-2">
@@ -651,19 +728,33 @@ export function EnrollmentForm({ onSuccess, onCancel }: EnrollmentFormProps) {
                           type="email"
                           value={formData.studentEmail}
                           onChange={(e) => {
-                            setFormData({ ...formData, studentEmail: e.target.value })
                             const email = e.target.value
+                            setFormData({ ...formData, studentEmail: email })
+                            if (validationErrors.studentEmail) {
+                              setValidationErrors(prev => ({ ...prev, studentEmail: '' }))
+                            }
+                            // Validate email format
                             if (email) {
+                              setStudentEmailValid(isValidEmail(email))
                               const timeoutId = setTimeout(() => checkEmail(email), 500)
                               return () => clearTimeout(timeoutId)
+                            } else {
+                              setStudentEmailValid(true)
                             }
                           }}
                           placeholder="john@example.com"
+                          className={validationErrors.studentEmail || !studentEmailValid ? 'border-red-500' : ''}
                         />
                         {emailCheckLoading && (
                           <Loader2 className="w-4 h-4 animate-spin absolute right-3 top-3 text-gray-400" />
                         )}
                       </div>
+                      {!studentEmailValid && formData.studentEmail && !emailCheckLoading && (
+                        <p className="text-sm text-red-500 mt-1">Please enter a valid email address</p>
+                      )}
+                      {validationErrors.studentEmail && (
+                        <p className="text-sm text-red-500 mt-1">{validationErrors.studentEmail}</p>
+                      )}
                       {emailExists && existingStudentData && (
                         <Alert variant="destructive">
                           <AlertCircle className="h-4 w-4" />
@@ -692,15 +783,44 @@ export function EnrollmentForm({ onSuccess, onCancel }: EnrollmentFormProps) {
                       <Input
                         id="studentPhone"
                         value={formData.studentPhone}
-                        onChange={(e) => setFormData({ ...formData, studentPhone: e.target.value })}
+                        onChange={(e) => {
+                          const phone = e.target.value;
+                          setFormData({ ...formData, studentPhone: phone });
+                          if (validationErrors.studentPhone) {
+                            setValidationErrors(prev => ({ ...prev, studentPhone: '' }))
+                          }
+                          
+                          // Validate phone number
+                          if (phone) {
+                            const isValid = checkPhoneNumber(phone);
+                            setStudentPhoneValid(isValid);
+                          } else {
+                            setStudentPhoneValid(true); // Reset validation when empty
+                          }
+                        }}
                         placeholder="+91 98765 43210"
+                        className={!studentPhoneValid || validationErrors.studentPhone ? 'border-red-500' : ''}
                       />
+                      {!studentPhoneValid && formData.studentPhone && (
+                        <p className="text-sm text-red-500 mt-1">Please enter a valid phone number</p>
+                      )}
+                      {validationErrors.studentPhone && (
+                        <p className="text-sm text-red-500 mt-1">{validationErrors.studentPhone}</p>
+                      )}
                     </div>
                     
                     <div className="space-y-2">
                       <Label htmlFor="ageGroup">Age Group *</Label>
-                      <Select value={formData.ageGroup} onValueChange={(value) => setFormData({ ...formData, ageGroup: value })}>
-                        <SelectTrigger>
+                      <Select 
+                        value={formData.ageGroup} 
+                        onValueChange={(value) => {
+                          setFormData({ ...formData, ageGroup: value })
+                          if (validationErrors.ageGroup) {
+                            setValidationErrors(prev => ({ ...prev, ageGroup: '' }))
+                          }
+                        }}
+                      >
+                        <SelectTrigger className={validationErrors.ageGroup ? 'border-red-500' : ''}>
                           <SelectValue placeholder="Select age group" />
                         </SelectTrigger>
                         <SelectContent>
@@ -709,6 +829,9 @@ export function EnrollmentForm({ onSuccess, onCancel }: EnrollmentFormProps) {
                           ))}
                         </SelectContent>
                       </Select>
+                      {validationErrors.ageGroup && (
+                        <p className="text-sm text-red-500 mt-1">{validationErrors.ageGroup}</p>
+                      )}
                     </div>
                   </div>
 
@@ -733,9 +856,30 @@ export function EnrollmentForm({ onSuccess, onCancel }: EnrollmentFormProps) {
                         <Input
                           id="parentPhone"
                           value={formData.parentPhone}
-                          onChange={(e) => setFormData({ ...formData, parentPhone: e.target.value })}
+                          onChange={(e) => {
+                            const phone = e.target.value;
+                            setFormData({ ...formData, parentPhone: phone });
+                            if (validationErrors.parentPhone) {
+                              setValidationErrors(prev => ({ ...prev, parentPhone: '' }))
+                            }
+                            
+                            // Validate phone number
+                            if (phone) {
+                              const isValid = checkPhoneNumber(phone);
+                              setParentPhoneValid(isValid);
+                            } else {
+                              setParentPhoneValid(true); // Reset validation when empty
+                            }
+                          }}
                           placeholder="+91 98765 43210"
+                          className={!parentPhoneValid || validationErrors.parentPhone ? 'border-red-500' : ''}
                         />
+                        {!parentPhoneValid && formData.parentPhone && (
+                          <p className="text-sm text-red-500 mt-1">Please enter a valid phone number</p>
+                        )}
+                        {validationErrors.parentPhone && (
+                          <p className="text-sm text-red-500 mt-1">{validationErrors.parentPhone}</p>
+                        )}
                       </div>
                     </div>
                     
@@ -745,9 +889,28 @@ export function EnrollmentForm({ onSuccess, onCancel }: EnrollmentFormProps) {
                         id="parentEmail"
                         type="email"
                         value={formData.parentEmail}
-                        onChange={(e) => setFormData({ ...formData, parentEmail: e.target.value })}
+                        onChange={(e) => {
+                          const email = e.target.value
+                          setFormData({ ...formData, parentEmail: email })
+                          if (validationErrors.parentEmail) {
+                            setValidationErrors(prev => ({ ...prev, parentEmail: '' }))
+                          }
+                          // Validate parent email format
+                          if (email && email.trim() !== '') {
+                            setParentEmailValid(isValidEmail(email))
+                          } else {
+                            setParentEmailValid(true)
+                          }
+                        }}
                         placeholder="parent@example.com"
+                        className={!parentEmailValid || validationErrors.parentEmail ? 'border-red-500' : ''}
                       />
+                      {!parentEmailValid && formData.parentEmail && (
+                        <p className="text-sm text-red-500 mt-1">Please enter a valid email address</p>
+                      )}
+                      {validationErrors.parentEmail && (
+                        <p className="text-sm text-red-500 mt-1">{validationErrors.parentEmail}</p>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -774,7 +937,15 @@ export function EnrollmentForm({ onSuccess, onCancel }: EnrollmentFormProps) {
             <CardContent className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="course">Select Course *</Label>
-                <Select value={formData.courseId} onValueChange={handleCourseChange}>
+                <Select 
+                  value={formData.courseId} 
+                  onValueChange={(value) => {
+                    handleCourseChange(value)
+                    if (validationErrors.courseId) {
+                      setValidationErrors(prev => ({ ...prev, courseId: '' }))
+                    }
+                  }}
+                >
                   <SelectTrigger>
                     <SelectValue placeholder="Choose a course..." />
                   </SelectTrigger>
@@ -797,6 +968,9 @@ export function EnrollmentForm({ onSuccess, onCancel }: EnrollmentFormProps) {
                     )}
                   </SelectContent>
                 </Select>
+                {validationErrors.courseId && (
+                  <p className="text-sm text-red-500 mt-1">{validationErrors.courseId}</p>
+                )}
               </div>
 
               <FormatSelection
@@ -994,7 +1168,12 @@ export function EnrollmentForm({ onSuccess, onCancel }: EnrollmentFormProps) {
                   <Label htmlFor="firstPaymentMethod">Payment Method *</Label>
                   <Select 
                     value={formData.firstPaymentMethod} 
-                    onValueChange={(value) => setFormData({ ...formData, firstPaymentMethod: value as any })}
+                    onValueChange={(value) => {
+                      setFormData({ ...formData, firstPaymentMethod: value as any })
+                      if (validationErrors.paymentMethod) {
+                        setValidationErrors(prev => ({ ...prev, paymentMethod: '' }))
+                      }
+                    }}
                   >
                     <SelectTrigger>
                       <SelectValue />
@@ -1008,6 +1187,9 @@ export function EnrollmentForm({ onSuccess, onCancel }: EnrollmentFormProps) {
                       <SelectItem value="CASH">Cash</SelectItem>
                     </SelectContent>
                   </Select>
+                  {validationErrors.paymentMethod && (
+                    <p className="text-sm text-red-500 mt-1">{validationErrors.paymentMethod}</p>
+                  )}
                 </div>
 
                 <div className="flex items-center space-x-2">

@@ -343,26 +343,9 @@ export async function POST(request: NextRequest) {
 
     const result = { enrollment, payments: createdPayments, student, course }
 
-    // Send onboarding link for students on enrollment (ACTIVE only)
-    if (process.env.EMAIL_ENABLED === 'true' && result.student.status === 'ACTIVE') {
-      try {
-        const token = signOnboardingToken({ userId: result.student.id, role: 'STUDENT', purpose: 'onboarding', scope: 'student' })
-        const baseUrl = process.env.NEXTAUTH_URL || 'http://localhost:3000'
-        const link = `${baseUrl}/onboarding?token=${encodeURIComponent(token)}`
-
-        await emailService.sendEmail({
-          to: result.student.email,
-          template: 'user.onboarding-link',
-          data: {
-            userName: result.student.name || result.student.email,
-            link
-          }
-        })
-      } catch (error) {
-        console.error('Email sending error:', error)
-        // Don't fail the enrollment if email fails
-      }
-    }
+    // Note: Onboarding email is sent when student is created via /api/students
+    // No need to send duplicate email here for new students
+    // For existing students, they already have onboarding access
 
     return NextResponse.json({
       success: true,
