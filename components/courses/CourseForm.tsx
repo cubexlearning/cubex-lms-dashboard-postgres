@@ -1,408 +1,821 @@
-"use client"
-import { useState, useEffect } from 'react'
-import { useForm } from 'react-hook-form'
-import { zodResolver } from '@hookform/resolvers/zod'
-import { z } from 'zod'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Checkbox } from '@/components/ui/checkbox'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
-import { Label } from '@/components/ui/label'
-import { Switch } from '@/components/ui/switch'
-import { Separator } from '@/components/ui/separator'
-import { Plus, X, Users, DollarSign, Clock, Calendar, Image, Video, Tag, Settings, ChevronLeft, ChevronRight } from 'lucide-react'
-import { toast } from 'sonner'
-import { useSettings } from '@/contexts/SettingsContext'
+"use client";
+import { useState, useEffect } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+import { parsePhoneNumber, isValidPhoneNumber } from "libphonenumber-js";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { Separator } from "@/components/ui/separator";
+import {
+  Plus,
+  X,
+  Users,
+  DollarSign,
+  Clock,
+  Calendar,
+  Image,
+  Video,
+  Tag,
+  Settings,
+  ChevronLeft,
+  ChevronRight,
+} from "lucide-react";
+import { toast } from "sonner";
+import { useSettings } from "@/contexts/SettingsContext";
 
-// Helper function to handle NaN/null values in number fields
-const numberOrNaN = z
-  .union([z.number(), z.nan(), z.null()])
-  .transform((val) => (val === null || isNaN(val as any) ? undefined : (val as number)))
-  .optional()
+const basicInformationSchema = z.object({
+  title: z
+    .string()
+    .min(3, "Title must be at least 3 characters")
+    .max(50, "Title must not exceed 50 characters")
+    .refine(
+      (val) => val.trim().length >= 3,
+      "Title must be at least 3 characters",
+    ),
+  shortDescription: z
+    .string()
+    .min(10, "Short description must be at least 10 characters")
+    .max(500, "Short description must not exceed 500 characters")
+    .refine(
+      (val) => val.trim().length >= 10,
+      "Short description must be at least 10 characters",
+    ),
+  longDescription: z
+    .string()
+    .min(50, "Long description must be at least 50 characters")
+    .max(5000, "Long description must not exceed 5000 characters")
+    .refine(
+      (val) => val.trim().length >= 50,
+      "Long description must be at least 50 characters",
+    ),
+  categoryId: z.string().min(1, "Category is required"),
+  curriculumId: z.string().min(1, "Curriculum is required"),
+  courseFormatId: z.string().min(1, "Course format is required"),
+});
 
-// Validation schema (relaxed to avoid blocking edits)
-const courseFormSchema = z.object({
-  title: z.string().optional(),
-  shortDescription: z.string().optional(),
-  longDescription: z.string().optional(),
-  categoryId: z.string().optional(),
-  curriculumId: z.string().optional(),
-  courseFormatId: z.string().optional(),
-  courseTypeId: z.string().optional(),
-  
-  // One-to-One Pricing
-  oneToOnePrice: numberOrNaN,
-  oneToOneOffer: numberOrNaN,
+const pricingSchema = z.object({
+  // One-to-One Pricing with validation
+  oneToOnePrice: z
+    .number()
+    .min(0, "Price cannot be negative")
+    .max(10000000, "Price cannot exceed 10,000,000")
+    .refine(
+      (val) => Number.isFinite(val) && Math.floor(val * 100) === val * 100,
+      { message: "Must have at most 2 decimal places" },
+    )
+    .optional()
+    .or(z.nan())
+    .or(z.null())
+    .transform((val) =>
+      val === null || isNaN(val as any) ? undefined : (val as number),
+    ),
+  oneToOneOffer: z
+    .number()
+    .min(0, "Offer price cannot be negative")
+    .max(10000000, "Offer price cannot exceed 10,000,000")
+    .refine(
+      (val) => Number.isFinite(val) && Math.floor(val * 100) === val * 100,
+      { message: "Must have at most 2 decimal places" },
+    )
+    .optional()
+    .or(z.nan())
+    .or(z.null())
+    .transform((val) =>
+      val === null || isNaN(val as any) ? undefined : (val as number),
+    ),
   oneToOneActive: z.boolean().default(true),
-  
-  // Group Pricing - only validate when format allows groups
-  groupPrice: numberOrNaN,
-  groupOffer: numberOrNaN,
+
+  // Group Pricing with validation
+  groupPrice: z
+    .number()
+    .min(0, "Group price cannot be negative")
+    .max(10000000, "Group price cannot exceed 10,000,000")
+    .refine(
+      (val) => Number.isFinite(val) && Math.floor(val * 100) === val * 100,
+      { message: "Must have at most 2 decimal places" },
+    )
+    .optional()
+    .or(z.nan())
+    .or(z.null())
+    .transform((val) =>
+      val === null || isNaN(val as any) ? undefined : (val as number),
+    ),
+  groupOffer: z
+    .number()
+    .min(0, "Group offer price cannot be negative")
+    .max(10000000, "Group offer price cannot exceed 10,000,000")
+    .refine(
+      (val) => Number.isFinite(val) && Math.floor(val * 100) === val * 100,
+      { message: "Must have at most 2 decimal places" },
+    )
+    .optional()
+    .or(z.nan())
+    .or(z.null())
+    .transform((val) =>
+      val === null || isNaN(val as any) ? undefined : (val as number),
+    ),
   groupActive: z.boolean().default(true),
-  maxGroupSize: numberOrNaN,
-  minGroupSize: numberOrNaN,
-  
-  // Session Details
-  sessionDuration: numberOrNaN,
-  sessionsPerWeek: numberOrNaN,
-  totalSessions: numberOrNaN,
-  
-  // Age & Level Restrictions
-  minAge: numberOrNaN,
-  maxAge: numberOrNaN,
-  prerequisiteLevel: z.string().optional(),
-  
-  // Media
-  primaryImage: z.string().optional(),
-  secondaryImage: z.string().optional(),
-  videoUrl: z.string().url().optional().or(z.literal('')),
-  
-  // Metadata
-  tags: z.array(z.string()).default([]),
-  difficulty: z.enum(['BEGINNER', 'INTERMEDIATE', 'ADVANCED']).optional(),
-  
-  // Tutors (optional)
+  maxGroupSize: z
+    .number()
+    .int("Group size must be a whole number")
+    .min(1, "Maximum group size must be at least 1")
+    .max(100, "Maximum group size cannot exceed 100")
+    .optional()
+    .or(z.nan())
+    .or(z.null())
+    .transform((val) =>
+      val === null || isNaN(val as any) ? undefined : (val as number),
+    ),
+  minGroupSize: z
+    .number()
+    .int("Group size must be a whole number")
+    .min(1, "Minimum group size must be at least 1")
+    .max(100, "Minimum group size cannot exceed 100")
+    .optional()
+    .or(z.nan())
+    .or(z.null())
+    .transform((val) =>
+      val === null || isNaN(val as any) ? undefined : (val as number),
+    ),
+});
+
+const sessionDetailsSchema = z.object({
+  sessionDuration: z
+    .number()
+    .int("Session duration must be a whole number")
+    .min(15, "Session duration must be at least 15 minutes")
+    .max(480, "Session duration cannot exceed 480 minutes (8 hours)")
+    .optional()
+    .or(z.nan())
+    .or(z.null())
+    .transform((val) =>
+      val === null || isNaN(val as any) ? undefined : (val as number),
+    ),
+  sessionsPerWeek: z
+    .number()
+    .int("Sessions per week must be a whole number")
+    .min(1, "Must have at least 1 session per week")
+    .max(7, "Cannot exceed 7 sessions per week")
+    .optional()
+    .or(z.nan())
+    .or(z.null())
+    .transform((val) =>
+      val === null || isNaN(val as any) ? undefined : (val as number),
+    ),
+  totalSessions: z
+    .number()
+    .int("Total sessions must be a whole number")
+    .min(1, "Must have at least 1 session")
+    .max(1000, "Cannot exceed 1000 sessions")
+    .optional()
+    .or(z.nan())
+    .or(z.null())
+    .transform((val) =>
+      val === null || isNaN(val as any) ? undefined : (val as number),
+    ),
+});
+
+const requirementsSchema = z.object({
+  minAge: z
+    .number()
+    .int("Age must be a whole number")
+    .min(3, "Minimum age must be at least 3")
+    .max(100, "Minimum age cannot exceed 100")
+    .optional()
+    .or(z.nan())
+    .or(z.null())
+    .transform((val) =>
+      val === null || isNaN(val as any) ? undefined : (val as number),
+    ),
+  maxAge: z
+    .number()
+    .int("Age must be a whole number")
+    .min(3, "Maximum age must be at least 3")
+    .max(100, "Maximum age cannot exceed 100")
+    .optional()
+    .or(z.nan())
+    .or(z.null())
+    .transform((val) =>
+      val === null || isNaN(val as any) ? undefined : (val as number),
+    ),
+  prerequisiteLevel: z
+    .string()
+    .max(100, "Prerequisite level must not exceed 100 characters")
+    .optional(),
+});
+
+const tutorsStatusSchema = z.object({
+  courseTypeId: z.string().min(1, "Course type is required"),
   tutorIds: z.array(z.string()).default([]),
   primaryTutorId: z.string().optional(),
-  
-  // Status
-  status: z.enum(['DRAFT', 'PUBLISHED', 'ARCHIVED', 'SUSPENDED']).default('DRAFT'),
-})
+  status: z
+    .enum(["DRAFT", "PUBLISHED", "ARCHIVED", "SUSPENDED"])
+    .default("DRAFT"),
+});
 
-type CourseFormData = z.infer<typeof courseFormSchema>
+const mediaTagsSchema = z.object({
+  primaryImage: z
+    .string()
+    .max(2000, "URL too long")
+    .optional()
+    .or(z.literal("")),
+  secondaryImage: z
+    .string()
+    .max(2000, "URL too long")
+    .optional()
+    .or(z.literal("")),
+  videoUrl: z.string().max(2000, "URL too long").optional().or(z.literal("")),
+  tags: z
+    .array(z.string().min(1).max(50))
+    .max(20, "Cannot exceed 20 tags")
+    .default([]),
+  difficulty: z.enum(["BEGINNER", "INTERMEDIATE", "ADVANCED"]).optional(),
+});
+
+const courseFormSchema = basicInformationSchema
+  .merge(pricingSchema)
+  .merge(sessionDetailsSchema)
+  .merge(requirementsSchema)
+  .merge(tutorsStatusSchema)
+  .merge(mediaTagsSchema)
+  .refine(
+    (data) => {
+      // Validate that maxAge >= minAge if both are provided
+      if (data.minAge && data.maxAge && data.maxAge < data.minAge) {
+        return false;
+      }
+      return true;
+    },
+    {
+      message: "Maximum age must be greater than or equal to minimum age",
+      path: ["maxAge"],
+    },
+  )
+  .refine(
+    (data) => {
+      // Validate that maxGroupSize >= minGroupSize if both are provided
+      if (
+        data.minGroupSize &&
+        data.maxGroupSize &&
+        data.maxGroupSize < data.minGroupSize
+      ) {
+        return false;
+      }
+      return true;
+    },
+    {
+      message:
+        "Maximum group size must be greater than or equal to minimum group size",
+      path: ["maxGroupSize"],
+    },
+  )
+  .refine(
+    (data) => {
+      // Validate that offer price <= regular price if both are provided
+      if (
+        data.oneToOnePrice &&
+        data.oneToOneOffer &&
+        data.oneToOneOffer > data.oneToOnePrice
+      ) {
+        return false;
+      }
+      return true;
+    },
+    {
+      message: "Offer price cannot be greater than regular price",
+      path: ["oneToOneOffer"],
+    },
+  )
+  .refine(
+    (data) => {
+      // Validate that group offer price <= group regular price if both are provided
+      if (
+        data.groupPrice &&
+        data.groupOffer &&
+        data.groupOffer > data.groupPrice
+      ) {
+        return false;
+      }
+      return true;
+    },
+    {
+      message: "Group offer price cannot be greater than regular price",
+      path: ["groupOffer"],
+    },
+  );
+
+type CourseFormData = z.infer<typeof courseFormSchema>;
 
 interface CourseFormProps {
-  initialData?: Partial<CourseFormData>
-  onSubmit: (data: CourseFormData) => Promise<void>
-  onCancel: () => void
-  isLoading?: boolean
+  initialData?: Partial<CourseFormData>;
+  onSubmit: (data: CourseFormData) => Promise<void>;
+  onCancel: () => void;
+  isLoading?: boolean;
 }
 
 // Step definitions
 const STEPS = [
-  { id: 1, title: 'Basic Information', description: 'Course details and description' },
-  { id: 2, title: 'Pricing', description: 'One-to-one and group pricing' },
-  { id: 3, title: 'Session Details', description: 'Duration and scheduling' },
-  { id: 4, title: 'Requirements', description: 'Age and prerequisites' },
-  { id: 5, title: 'Tutors & Status', description: 'Assign tutors and set status' },
-  { id: 6, title: 'Media & Tags', description: 'Images, videos and tags' }
-]
+  {
+    id: 1,
+    title: "Basic Information",
+    description: "Course details and description",
+  },
+  { id: 2, title: "Pricing", description: "One-to-one and group pricing" },
+  { id: 3, title: "Session Details", description: "Duration and scheduling" },
+  { id: 4, title: "Requirements", description: "Age and prerequisites" },
+  {
+    id: 5,
+    title: "Tutors & Status",
+    description: "Assign tutors and set status",
+  },
+  { id: 6, title: "Media & Tags", description: "Images, videos and tags" },
+];
 
-export function CourseForm({ initialData, onSubmit, onCancel, isLoading = false }: CourseFormProps) {
-  const { getCurrencySymbol } = useSettings()
-  const currencySymbol = getCurrencySymbol()
-  const isEdit = Boolean((initialData as any)?.id)
-  const [currentStep, setCurrentStep] = useState(1)
-  const [categories, setCategories] = useState<any[]>([])
-  const [curricula, setCurricula] = useState<any[]>([])
-  const [courseFormats, setCourseFormats] = useState<any[]>([])
-  const [courseTypes, setCourseTypes] = useState<any[]>([])
-  const [tutors, setTutors] = useState<any[]>([])
-  const [selectedTutors, setSelectedTutors] = useState<string[]>(initialData?.tutorIds || [])
-  const [newTag, setNewTag] = useState('')
-  const [showValidation, setShowValidation] = useState(false)
+export function CourseForm({
+  initialData,
+  onSubmit,
+  onCancel,
+  isLoading = false,
+}: CourseFormProps) {
+  const { getCurrencySymbol } = useSettings();
+  const currencySymbol = getCurrencySymbol();
+  const isEdit = Boolean((initialData as any)?.id);
+  const [currentStep, setCurrentStep] = useState(1);
+  const [categories, setCategories] = useState<any[]>([]);
+  const [curricula, setCurricula] = useState<any[]>([]);
+  const [courseFormats, setCourseFormats] = useState<any[]>([]);
+  const [courseTypes, setCourseTypes] = useState<any[]>([]);
+  const [tutors, setTutors] = useState<any[]>([]);
+  const [selectedTutors, setSelectedTutors] = useState<string[]>(
+    initialData?.tutorIds || [],
+  );
+  const [newTag, setNewTag] = useState("");
+  const [showValidation, setShowValidation] = useState(false);
 
-  const { register, handleSubmit, formState: { errors }, watch, setValue } = useForm<CourseFormData>({
+  const {
+    register,
+    handleSubmit,
+    formState: { errors },
+    watch,
+    setValue: _setValue,
+    setError,
+  } = useForm<CourseFormData>({
     resolver: zodResolver(courseFormSchema),
-    mode: 'onChange', // Add this for real-time validation
+    mode: "onChange",
     defaultValues: {
-      oneToOneActive: true,
-      groupActive: true,
-      tags: [],
-      tutorIds: [],
-      status: 'DRAFT',
-      ...initialData,
-    }
-  })
+      title: initialData?.title || "",
+      shortDescription: initialData?.shortDescription || "",
+      longDescription: initialData?.longDescription || "",
+      categoryId: initialData?.categoryId || "",
+      curriculumId: initialData?.curriculumId || "",
+      courseFormatId: initialData?.courseFormatId || "",
+      courseTypeId: initialData?.courseTypeId || "",
+      oneToOneActive: initialData?.oneToOneActive ?? true,
+      groupActive: initialData?.groupActive ?? true,
+      tags: initialData?.tags || [],
+      tutorIds: initialData?.tutorIds || [],
+      status: initialData?.status || "DRAFT",
+      difficulty: initialData?.difficulty,
+      prerequisiteLevel: initialData?.prerequisiteLevel || "",
+      primaryImage: initialData?.primaryImage || "",
+      secondaryImage: initialData?.secondaryImage || "",
+      videoUrl: initialData?.videoUrl || "",
+      primaryTutorId: initialData?.primaryTutorId,
+    },
+  });
 
-  // const selectedCourseFormatId = watch('courseFormatId')
+  const setValue = (
+    key: Parameters<typeof _setValue>[0],
+    value: Parameters<typeof _setValue>[1],
+    options?: Parameters<typeof _setValue>[2],
+  ) => {
+    _setValue(key, value, {
+      shouldValidate: true,
+      shouldDirty: true,
+      shouldTouch: true,
+    });
+  };
 
-  // Add debugging
-  console.log('Form setup complete')
-  console.log('Form errors:', errors)
-  console.log('Form values:', watch())
-
-  // Add this to watch for changes
-  useEffect(() => {
-    console.log('Form errors changed:', errors)
-    console.log('Form values changed:', watch())
-  }, [errors, watch()])
-
-  // Pricing visibility is controlled by the toggles now (no enum-based gating)
-
-  // Load data on component mount
   useEffect(() => {
     // Normalize and populate initial values for edit mode
     if (initialData) {
-      if (initialData.title) setValue('title', initialData.title)
-      if (initialData.shortDescription) setValue('shortDescription', initialData.shortDescription)
-      if (initialData.longDescription) setValue('longDescription', initialData.longDescription)
-      if (initialData.categoryId) setValue('categoryId', initialData.categoryId)
-      if (initialData.curriculumId) setValue('curriculumId', initialData.curriculumId)
-      if (initialData.courseFormatId) setValue('courseFormatId', initialData.courseFormatId)
-      if (initialData.courseTypeId) setValue('courseTypeId', initialData.courseTypeId)
-      if (initialData.status) setValue('status', initialData.status as any)
+      if (initialData.title) setValue("title", initialData.title);
+      if (initialData.shortDescription)
+        setValue("shortDescription", initialData.shortDescription);
+      if (initialData.longDescription)
+        setValue("longDescription", initialData.longDescription);
+      if (initialData.categoryId)
+        setValue("categoryId", initialData.categoryId);
+      if (initialData.curriculumId)
+        setValue("curriculumId", initialData.curriculumId);
+      if (initialData.courseFormatId)
+        setValue("courseFormatId", initialData.courseFormatId);
+      if (initialData.courseTypeId)
+        setValue("courseTypeId", initialData.courseTypeId);
+      if (initialData.status) setValue("status", initialData.status as any);
       if (initialData.difficulty) {
         // Ensure difficulty matches enum formatting
-        setValue('difficulty', (initialData.difficulty as any).toString().toUpperCase() as any)
+        setValue(
+          "difficulty",
+          (initialData.difficulty as any).toString().toUpperCase() as any,
+        );
       }
       // Numeric fields
-      if (typeof (initialData as any).oneToOnePrice !== 'undefined') setValue('oneToOnePrice', (initialData as any).oneToOnePrice as any)
-      if (typeof (initialData as any).oneToOneOffer !== 'undefined') setValue('oneToOneOffer', (initialData as any).oneToOneOffer as any)
-      if (typeof (initialData as any).oneToOneActive !== 'undefined') setValue('oneToOneActive', (initialData as any).oneToOneActive as any)
-      if (typeof (initialData as any).groupPrice !== 'undefined') setValue('groupPrice', (initialData as any).groupPrice as any)
-      if (typeof (initialData as any).groupOffer !== 'undefined') setValue('groupOffer', (initialData as any).groupOffer as any)
-      if (typeof (initialData as any).groupActive !== 'undefined') setValue('groupActive', (initialData as any).groupActive as any)
-      if (typeof (initialData as any).maxGroupSize !== 'undefined') setValue('maxGroupSize', (initialData as any).maxGroupSize as any)
-      if (typeof (initialData as any).minGroupSize !== 'undefined') setValue('minGroupSize', (initialData as any).minGroupSize as any)
-      if (typeof (initialData as any).sessionDuration !== 'undefined') setValue('sessionDuration', (initialData as any).sessionDuration as any)
-      if (typeof (initialData as any).sessionsPerWeek !== 'undefined') setValue('sessionsPerWeek', (initialData as any).sessionsPerWeek as any)
-      if (typeof (initialData as any).totalSessions !== 'undefined') setValue('totalSessions', (initialData as any).totalSessions as any)
-      if ((initialData as any).tags) setValue('tags', (initialData as any).tags as any)
-      if ((initialData as any).primaryTutorId) setValue('primaryTutorId', (initialData as any).primaryTutorId as any)
+      if (typeof (initialData as any).oneToOnePrice !== "undefined")
+        setValue("oneToOnePrice", (initialData as any).oneToOnePrice as any);
+      if (typeof (initialData as any).oneToOneOffer !== "undefined")
+        setValue("oneToOneOffer", (initialData as any).oneToOneOffer as any);
+      if (typeof (initialData as any).oneToOneActive !== "undefined")
+        setValue("oneToOneActive", (initialData as any).oneToOneActive as any);
+      if (typeof (initialData as any).groupPrice !== "undefined")
+        setValue("groupPrice", (initialData as any).groupPrice as any);
+      if (typeof (initialData as any).groupOffer !== "undefined")
+        setValue("groupOffer", (initialData as any).groupOffer as any);
+      if (typeof (initialData as any).groupActive !== "undefined")
+        setValue("groupActive", (initialData as any).groupActive as any);
+      if (typeof (initialData as any).maxGroupSize !== "undefined")
+        setValue("maxGroupSize", (initialData as any).maxGroupSize as any);
+      if (typeof (initialData as any).minGroupSize !== "undefined")
+        setValue("minGroupSize", (initialData as any).minGroupSize as any);
+      if (typeof (initialData as any).sessionDuration !== "undefined")
+        setValue(
+          "sessionDuration",
+          (initialData as any).sessionDuration as any,
+        );
+      if (typeof (initialData as any).sessionsPerWeek !== "undefined")
+        setValue(
+          "sessionsPerWeek",
+          (initialData as any).sessionsPerWeek as any,
+        );
+      if (typeof (initialData as any).totalSessions !== "undefined")
+        setValue("totalSessions", (initialData as any).totalSessions as any);
+      if ((initialData as any).tags)
+        setValue("tags", (initialData as any).tags as any);
+      if ((initialData as any).primaryTutorId)
+        setValue("primaryTutorId", (initialData as any).primaryTutorId as any);
     }
 
     const loadData = async () => {
       try {
         // Load categories
-        const categoriesResponse = await fetch('/api/categories')
-        const categoriesData = await categoriesResponse.json()
+        const categoriesResponse = await fetch("/api/categories");
+        const categoriesData = await categoriesResponse.json();
         if (categoriesData.success) {
-          setCategories(categoriesData.data)
+          setCategories(categoriesData.data);
         }
 
         // Load curricula
-        const curriculaResponse = await fetch('/api/curriculum')
-        const curriculaData = await curriculaResponse.json()
+        const curriculaResponse = await fetch("/api/curriculum");
+        const curriculaData = await curriculaResponse.json();
         if (curriculaData.success) {
-          setCurricula(curriculaData.data)
+          setCurricula(curriculaData.data);
         }
 
         // Load tutors
-        const tutorsResponse = await fetch('/api/users?role=TUTOR')
-        const tutorsData = await tutorsResponse.json()
+        const tutorsResponse = await fetch("/api/users?role=TUTOR");
+        const tutorsData = await tutorsResponse.json();
         if (tutorsData.success) {
-          setTutors(tutorsData.data)
+          setTutors(tutorsData.data);
         }
 
         // Load course formats
-        const formatsResponse = await fetch('/api/course-formats')
-        const formatsData = await formatsResponse.json()
+        const formatsResponse = await fetch("/api/course-formats");
+        const formatsData = await formatsResponse.json();
         if (formatsData.success) {
-          setCourseFormats(formatsData.data)
+          setCourseFormats(formatsData.data);
         }
 
         // Load course types
-        const typesResponse = await fetch('/api/course-types')
-        const typesData = await typesResponse.json()
+        const typesResponse = await fetch("/api/course-types");
+        const typesData = await typesResponse.json();
         if (typesData.success) {
-          setCourseTypes(typesData.data)
+          setCourseTypes(typesData.data);
         }
       } catch (error) {
-        console.error('Error loading form data:', error)
-        toast.error('Failed to load form data')
+        console.error("Error loading form data:", error);
+        toast.error("Failed to load form data");
       }
-    }
+    };
 
-    loadData()
-  }, [])
+    loadData();
+  }, []);
 
   const handleTutorSelection = (tutorId: string, checked: boolean) => {
     if (checked) {
-      setSelectedTutors([...selectedTutors, tutorId])
-      setValue('tutorIds', [...selectedTutors, tutorId])
+      setSelectedTutors([...selectedTutors, tutorId]);
+      setValue("tutorIds", [...selectedTutors, tutorId]);
     } else {
-      const updated = selectedTutors.filter(id => id !== tutorId)
-      setSelectedTutors(updated)
-      setValue('tutorIds', updated)
+      const updated = selectedTutors.filter((id) => id !== tutorId);
+      setSelectedTutors(updated);
+      setValue("tutorIds", updated);
     }
-  }
+  };
 
   const addTag = () => {
-    if (newTag.trim() && !watch('tags').includes(newTag.trim())) {
-      const currentTags = watch('tags')
-      setValue('tags', [...currentTags, newTag.trim()])
-      setNewTag('')
+    const trimmedTag = newTag.trim();
+    const currentTags = watch("tags");
+
+    if (!trimmedTag) {
+      toast.error("Tag cannot be empty");
+      return;
     }
-  }
+
+    if (trimmedTag.length > 50) {
+      toast.error("Tag must not exceed 50 characters");
+      return;
+    }
+
+    if (currentTags.length >= 20) {
+      toast.error("Cannot exceed 20 tags");
+      return;
+    }
+
+    if (currentTags.includes(trimmedTag)) {
+      toast.error("Tag already exists");
+      return;
+    }
+
+    setValue("tags", [...currentTags, trimmedTag]);
+    setNewTag("");
+  };
 
   const removeTag = (tagToRemove: string) => {
-    const currentTags = watch('tags')
-    setValue('tags', currentTags.filter(tag => tag !== tagToRemove))
-  }
+    const currentTags = watch("tags");
+    setValue(
+      "tags",
+      currentTags.filter((tag) => tag !== tagToRemove),
+    );
+  };
 
   // Step validation functions
   const validateStep = (step: number): boolean => {
-    const formData = watch()
-    
+    const formData = watch();
+
     switch (step) {
-      case 1: // Basic Information
-        if (!formData.title?.trim()) {
-          toast.error('Title is required')
-          return false
-        }
-        if (!formData.shortDescription?.trim()) {
-          toast.error('Short description is required')
-          return false
-        }
-        if (!formData.longDescription?.trim()) {
-          toast.error('Long description is required')
-          return false
-        }
-        if (!formData.categoryId?.trim()) {
-          toast.error('Category is required')
-          return false
-        }
-        if (!formData.curriculumId?.trim()) {
-          toast.error('Curriculum is required')
-          return false
-        }
-        if (!formData.courseFormatId?.trim()) {
-          toast.error('Course format is required')
-          return false
-        }
-        return true
-        
-      case 2: // Pricing
-        // Check if at least one pricing type is active and has valid pricing
-        const oneToOneActive = formData.oneToOneActive
-        const groupActive = formData.groupActive
-        
-        if (!oneToOneActive && !groupActive) {
-          toast.error('At least one pricing type must be active')
-          return false
-        }
-        
-        if (oneToOneActive && (!formData.oneToOnePrice || formData.oneToOnePrice <= 0)) {
-          toast.error('One-to-one price is required and must be greater than 0')
-          return false
-        }
-        
-        if (groupActive && (!formData.groupPrice || formData.groupPrice <= 0)) {
-          toast.error('Group price is required and must be greater than 0')
-          return false
-        }
-        
-        return true
-        
-      case 3: // Session Details
-        // No required fields in session details step
-        return true
-        
-      case 4: // Requirements
-        // No required fields in requirements step
-        return true
-        
-      case 5: // Tutors & Status
-        if (!formData.courseTypeId?.trim()) {
-          toast.error('Course type is required')
-          return false
-        }
-        return true
-        
-      case 6: // Media & Tags
-        // No required fields in media step
-        return true
-        
+      case 1: {
+        // Basic Information
+        const { success, error } = basicInformationSchema.safeParse(formData);
+        if (success) return true;
+
+        error.issues.forEach((issue) => {
+          const fieldName = issue.path.join(".") as keyof CourseFormData;
+          setError(fieldName, {
+            type: "manual",
+            message: issue.message,
+          });
+        });
+        return false;
+      }
+
+      case 2: {
+        // Pricing
+        const { success, error } = pricingSchema
+          .refine(
+            (data) => {
+              // Validate that maxGroupSize >= minGroupSize if both are provided
+              if (
+                data.minGroupSize &&
+                data.maxGroupSize &&
+                data.maxGroupSize < data.minGroupSize
+              ) {
+                return false;
+              }
+              return true;
+            },
+            {
+              message:
+                "Maximum group size must be greater than or equal to minimum group size",
+              path: ["maxGroupSize"],
+            },
+          )
+          .refine(
+            (data) => {
+              // Validate that offer price <= regular price if both are provided
+              if (
+                data.oneToOnePrice &&
+                data.oneToOneOffer &&
+                data.oneToOneOffer > data.oneToOnePrice
+              ) {
+                return false;
+              }
+              return true;
+            },
+            {
+              message: "Offer price cannot be greater than regular price",
+              path: ["oneToOneOffer"],
+            },
+          )
+          .refine(
+            (data) => {
+              // Validate that group offer price <= group regular price if both are provided
+              if (
+                data.groupPrice &&
+                data.groupOffer &&
+                data.groupOffer > data.groupPrice
+              ) {
+                return false;
+              }
+              return true;
+            },
+            {
+              message: "Group offer price cannot be greater than regular price",
+              path: ["groupOffer"],
+            },
+          )
+          .safeParse(formData);
+        if (success) return true;
+
+        error.issues.forEach((issue) => {
+          const fieldName = issue.path.join(".") as keyof CourseFormData;
+          setError(fieldName, {
+            type: "manual",
+            message: issue.message,
+          });
+        });
+        return false;
+      }
+
+      case 3: {
+        const { success, error } = sessionDetailsSchema.safeParse(formData);
+        if (success) return true;
+        error.issues.forEach((issue) => {
+          const fieldName = issue.path.join(".") as keyof CourseFormData;
+          setError(fieldName, {
+            type: "manual",
+            message: issue.message,
+          });
+        });
+        return false;
+      }
+
+      case 4: {
+        const { success, error } = requirementsSchema
+          .refine(
+            (data) => {
+              // Validate that maxAge >= minAge if both are provided
+              if (data.minAge && data.maxAge && data.maxAge < data.minAge) {
+                return false;
+              }
+              return true;
+            },
+            {
+              message:
+                "Maximum age must be greater than or equal to minimum age",
+              path: ["maxAge"],
+            },
+          )
+          .safeParse(formData);
+        if (success) return true;
+        error.issues.forEach((issue) => {
+          const fieldName = issue.path.join(".") as keyof CourseFormData;
+          setError(fieldName, {
+            type: "manual",
+            message: issue.message,
+          });
+        });
+        return false;
+      }
+
+      case 5: {
+        const { success, error } = tutorsStatusSchema.safeParse(formData);
+        if (success) return true;
+        error.issues.forEach((issue) => {
+          const fieldName = issue.path.join(".") as keyof CourseFormData;
+          setError(fieldName, {
+            type: "manual",
+            message: issue.message,
+          });
+        });
+        return false;
+      }
+
+      case 6: {
+        const { success, error } = mediaTagsSchema.safeParse(formData);
+        if (success) return true;
+        error.issues.forEach((issue) => {
+          const fieldName = issue.path.join(".") as keyof CourseFormData;
+          setError(fieldName, {
+            type: "manual",
+            message: issue.message,
+          });
+        });
+        return false;
+      }
+
       default:
-        return true
+        return true;
     }
-  }
+  };
 
   const nextStep = (e?: React.MouseEvent) => {
-    e?.preventDefault() // Prevent form submission
-    setShowValidation(true)
-    
+    e?.preventDefault(); // Prevent form submission
+    setShowValidation(true);
+
     if (validateStep(currentStep)) {
       if (currentStep < STEPS.length) {
-        setCurrentStep(currentStep + 1)
-        setShowValidation(false) // Reset validation state for next step
+        setCurrentStep(currentStep + 1);
+        setShowValidation(false); // Reset validation state for next step
       }
     }
-  }
+  };
 
   const prevStep = (e?: React.MouseEvent) => {
-    e?.preventDefault() // Prevent form submission
+    e?.preventDefault(); // Prevent form submission
     if (currentStep > 1) {
-      setCurrentStep(currentStep - 1)
+      setCurrentStep(currentStep - 1);
     }
-  }
+  };
 
   const onFormSubmit = async (data: CourseFormData) => {
-    console.log('=== FORM SUBMISSION STARTED ===')
-    console.log('Form data received:', data)
-    console.log('Form errors:', errors)
-    console.log('Selected tutors:', selectedTutors)
-    
+    console.log("=== FORM SUBMISSION STARTED ===");
+    console.log("Form data received:", data);
+    console.log("Form errors:", errors);
+    console.log("Selected tutors:", selectedTutors);
+
     try {
       // Enforce minimal required fields only on create
       if (!isEdit) {
         if (!data.title || !data.title.trim()) {
-          toast.error('Title is required')
-          return
+          toast.error("Title is required");
+          return;
         }
         if (!data.shortDescription || !data.shortDescription.trim()) {
-          toast.error('Short description is required')
-          return
+          toast.error("Short description is required");
+          return;
         }
         if (!data.categoryId || !data.categoryId.trim()) {
-          toast.error('Category is required')
-          return
+          toast.error("Category is required");
+          return;
         }
       }
 
       // Ensure tutorIds is properly set
       const formData = {
         ...data,
-        tutorIds: selectedTutors
-      }
-      
-      console.log('Final data being sent:', formData)
-      await onSubmit(formData)
-      console.log('onSubmit completed successfully')
+        tutorIds: selectedTutors,
+      };
+
+      console.log("Final data being sent:", formData);
+      await onSubmit(formData);
+      console.log("onSubmit completed successfully");
     } catch (error: any) {
-      console.error('=== FORM SUBMISSION ERROR ===')
-      console.error('Error:', error)
+      console.error("=== FORM SUBMISSION ERROR ===");
+      console.error("Error:", error);
       // Re-throw the error so the parent component can handle it
-      throw error
+      throw error;
     }
-  }
+  };
 
   // Step indicator component
   const StepIndicator = () => (
     <div className="mb-6">
       <div className="flex items-center justify-center gap-2">
-        <span className="text-sm text-gray-600">Step {currentStep} of {STEPS.length}:</span>
-        <span className="font-medium text-gray-900">{STEPS[currentStep - 1]?.title}</span>
+        <span className="text-sm text-gray-600">
+          Step {currentStep} of {STEPS.length}:
+        </span>
+        <span className="font-medium text-gray-900">
+          {STEPS[currentStep - 1]?.title}
+        </span>
       </div>
     </div>
-  )
+  );
 
   return (
     <div className="space-y-6">
       <StepIndicator />
-      
-      <form 
+
+      <form
         onSubmit={handleSubmit(
           (data) => {
             // Only submit if we're on the final step
             if (currentStep === STEPS.length) {
-              console.log('✅ handleSubmit called with data:', data)
-              onFormSubmit(data)
+              console.log("✅ handleSubmit called with data:", data);
+              onFormSubmit(data);
             } else {
-              console.log('Form submission prevented - not on final step')
+              console.log("Form submission prevented - not on final step");
             }
           },
           (errors: any) => {
-            console.log('❌ Form validation failed with errors:', errors)
-            setShowValidation(true)
+            console.log("❌ Form validation failed with errors:", errors);
+            setShowValidation(true);
             // Show concise, user-friendly error
-            toast.error('Please review the highlighted fields')
-          }
-        )} 
+            toast.error("Please review the highlighted fields");
+          },
+        )}
         className="space-y-6"
       >
         {/* Step 1: Basic Information */}
@@ -420,27 +833,31 @@ export function CourseForm({ initialData, onSubmit, onCancel, isLoading = false 
                   <Label htmlFor="title">Course Title *</Label>
                   <Input
                     id="title"
-                    {...register('title')}
+                    {...register("title")}
                     placeholder="Enter course title"
-                    className={errors.title ? 'border-red-500' : ''}
+                    className={errors.title ? "border-red-500" : ""}
+                    required
+                    minLength={3}
+                    maxLength={50}
                   />
                   {showValidation && errors.title && (
-                    <p className="text-sm text-red-500 mt-1">{errors.title.message}</p>
-                  )}
-                  {showValidation && !watch('title')?.trim() && (
-                    <p className="text-sm text-red-500 mt-1">Course title is required</p>
+                    <p className="text-sm text-red-500 mt-1">
+                      {errors.title.message}
+                    </p>
                   )}
                 </div>
                 <div>
                   <Label htmlFor="categoryId">Category *</Label>
-                  <Select 
-                    value={watch('categoryId')} 
-                    onValueChange={(value) => setValue('categoryId', value)}
+                  <Select
+                    value={watch("categoryId")}
+                    onValueChange={(value) => setValue("categoryId", value)}
                   >
-                    <SelectTrigger className={errors.categoryId ? 'border-red-500' : ''}>
+                    <SelectTrigger
+                      className={errors.categoryId ? "border-red-500" : ""}
+                    >
                       <SelectValue placeholder="Select category" />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent position="item-aligned" sideOffset={5}>
                       {categories.map((category) => (
                         <SelectItem key={category.id} value={category.id}>
                           {category.name}
@@ -449,10 +866,9 @@ export function CourseForm({ initialData, onSubmit, onCancel, isLoading = false 
                     </SelectContent>
                   </Select>
                   {showValidation && errors.categoryId && (
-                    <p className="text-sm text-red-500 mt-1">{errors.categoryId.message}</p>
-                  )}
-                  {showValidation && !watch('categoryId')?.trim() && (
-                    <p className="text-sm text-red-500 mt-1">Category is required</p>
+                    <p className="text-sm text-red-500 mt-1">
+                      {errors.categoryId.message}
+                    </p>
                   )}
                 </div>
               </div>
@@ -460,14 +876,14 @@ export function CourseForm({ initialData, onSubmit, onCancel, isLoading = false 
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label htmlFor="curriculumId">Curriculum *</Label>
-                  <Select 
-                    value={watch('curriculumId')} 
-                    onValueChange={(value) => setValue('curriculumId', value)}
+                  <Select
+                    value={watch("curriculumId")}
+                    onValueChange={(value) => setValue("curriculumId", value)}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Select curriculum" />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent position="item-aligned" sideOffset={5}>
                       {curricula.map((curriculum) => (
                         <SelectItem key={curriculum.id} value={curriculum.id}>
                           {curriculum.name}
@@ -476,32 +892,32 @@ export function CourseForm({ initialData, onSubmit, onCancel, isLoading = false 
                     </SelectContent>
                   </Select>
                   {showValidation && errors.curriculumId && (
-                    <p className="text-sm text-red-500 mt-1">{errors.curriculumId.message}</p>
-                  )}
-                  {showValidation && !watch('curriculumId')?.trim() && (
-                    <p className="text-sm text-red-500 mt-1">Curriculum is required</p>
+                    <p className="text-sm text-red-500 mt-1">
+                      {errors.curriculumId.message}
+                    </p>
                   )}
                 </div>
                 <div>
                   <Label htmlFor="courseFormatId">Course Format *</Label>
-                  <Select 
-                    value={watch('courseFormatId')} 
-                    onValueChange={(value) => setValue('courseFormatId', value)}
+                  <Select
+                    value={watch("courseFormatId")}
+                    onValueChange={(value) => setValue("courseFormatId", value)}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Select format" />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent position="item-aligned" sideOffset={5}>
                       {courseFormats.map((f) => (
-                        <SelectItem key={f.id} value={f.id}>{f.name}</SelectItem>
+                        <SelectItem key={f.id} value={f.id}>
+                          {f.name}
+                        </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                   {showValidation && errors.courseFormatId && (
-                    <p className="text-sm text-red-500 mt-1">{errors.courseFormatId.message}</p>
-                  )}
-                  {showValidation && !watch('courseFormatId')?.trim() && (
-                    <p className="text-sm text-red-500 mt-1">Course format is required</p>
+                    <p className="text-sm text-red-500 mt-1">
+                      {errors.courseFormatId.message}
+                    </p>
                   )}
                 </div>
               </div>
@@ -510,16 +926,18 @@ export function CourseForm({ initialData, onSubmit, onCancel, isLoading = false 
                 <Label htmlFor="shortDescription">Short Description *</Label>
                 <Textarea
                   id="shortDescription"
-                  {...register('shortDescription')}
+                  {...register("shortDescription")}
                   placeholder="Brief description of the course"
-                  className={errors.shortDescription ? 'border-red-500' : ''}
+                  className={errors.shortDescription ? "border-red-500" : ""}
                   rows={3}
+                  required
+                  minLength={10}
+                  maxLength={500}
                 />
                 {showValidation && errors.shortDescription && (
-                  <p className="text-sm text-red-500 mt-1">{errors.shortDescription.message}</p>
-                )}
-                {showValidation && !watch('shortDescription')?.trim() && (
-                  <p className="text-sm text-red-500 mt-1">Short description is required</p>
+                  <p className="text-sm text-red-500 mt-1">
+                    {errors.shortDescription.message}
+                  </p>
                 )}
               </div>
 
@@ -527,15 +945,17 @@ export function CourseForm({ initialData, onSubmit, onCancel, isLoading = false 
                 <Label htmlFor="longDescription">Long Description *</Label>
                 <Textarea
                   id="longDescription"
-                  {...register('longDescription')}
+                  {...register("longDescription")}
                   placeholder="Detailed description of the course"
                   rows={4}
+                  required
+                  minLength={50}
+                  maxLength={5000}
                 />
                 {showValidation && errors.longDescription && (
-                  <p className="text-sm text-red-500 mt-1">{errors.longDescription.message}</p>
-                )}
-                {showValidation && !watch('longDescription')?.trim() && (
-                  <p className="text-sm text-red-500 mt-1">Long description is required</p>
+                  <p className="text-sm text-red-500 mt-1">
+                    {errors.longDescription.message}
+                  </p>
                 )}
               </div>
             </CardContent>
@@ -558,46 +978,61 @@ export function CourseForm({ initialData, onSubmit, onCancel, isLoading = false 
                   <Users className="w-4 h-4" />
                   <h4 className="font-medium">One-to-One Pricing</h4>
                   <Switch
-                    checked={watch('oneToOneActive')}
-                    onCheckedChange={(checked) => setValue('oneToOneActive', checked)}
+                    checked={watch("oneToOneActive")}
+                    onCheckedChange={(checked) =>
+                      setValue("oneToOneActive", checked)
+                    }
                   />
                 </div>
-                
-                {watch('oneToOneActive') && (
+
+                {watch("oneToOneActive") && (
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <Label htmlFor="oneToOnePrice">Price per Session ({currencySymbol})</Label>
+                      <Label htmlFor="oneToOnePrice">
+                        Price per Session ({currencySymbol})
+                      </Label>
                       <Input
                         id="oneToOnePrice"
                         type="number"
-                        {...register('oneToOnePrice', { 
+                        {...register("oneToOnePrice", {
                           valueAsNumber: true,
-                          setValueAs: (value) => isNaN(value) ? undefined : value
+                          setValueAs: (value) =>
+                            isNaN(value) ? undefined : value,
                         })}
                         placeholder="0.00"
-                        className={errors.oneToOnePrice ? 'border-red-500' : ''}
+                        className={errors.oneToOnePrice ? "border-red-500" : ""}
+                        min={0}
+                        max={10000000}
+                        step="0.01"
                       />
                       {showValidation && errors.oneToOnePrice && (
-                        <p className="text-sm text-red-500 mt-1">{errors.oneToOnePrice.message}</p>
-                      )}
-                      {showValidation && watch('oneToOneActive') && (!watch('oneToOnePrice') || (watch('oneToOnePrice') ?? 0) <= 0) && (
-                        <p className="text-sm text-red-500 mt-1">One-to-one price is required and must be greater than 0</p>
+                        <p className="text-sm text-red-500 mt-1">
+                          {errors.oneToOnePrice.message}
+                        </p>
                       )}
                     </div>
                     <div>
-                      <Label htmlFor="oneToOneOffer">Offer Price ({currencySymbol})</Label>
+                      <Label htmlFor="oneToOneOffer">
+                        Offer Price ({currencySymbol})
+                      </Label>
                       <Input
                         id="oneToOneOffer"
                         type="number"
-                        {...register('oneToOneOffer', { 
+                        {...register("oneToOneOffer", {
                           valueAsNumber: true,
-                          setValueAs: (value) => isNaN(value) ? undefined : value
+                          setValueAs: (value) =>
+                            isNaN(value) ? undefined : value,
                         })}
                         placeholder="0.00"
-                        className={errors.oneToOneOffer ? 'border-red-500' : ''}
+                        className={errors.oneToOneOffer ? "border-red-500" : ""}
+                        min={0}
+                        max={10000000}
+                        step="0.01"
                       />
                       {showValidation && errors.oneToOneOffer && (
-                        <p className="text-sm text-red-500 mt-1">{errors.oneToOneOffer.message}</p>
+                        <p className="text-sm text-red-500 mt-1">
+                          {errors.oneToOneOffer.message}
+                        </p>
                       )}
                     </div>
                   </div>
@@ -610,67 +1045,88 @@ export function CourseForm({ initialData, onSubmit, onCancel, isLoading = false 
                   <Users className="w-4 h-4" />
                   <h4 className="font-medium">Group Pricing</h4>
                   <Switch
-                    checked={watch('groupActive')}
-                    onCheckedChange={(checked) => setValue('groupActive', checked)}
+                    checked={watch("groupActive")}
+                    onCheckedChange={(checked) =>
+                      setValue("groupActive", checked)
+                    }
                   />
                 </div>
-                
-                {watch('groupActive') && (
+
+                {watch("groupActive") && (
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <Label htmlFor="groupPrice">Price per Session ({currencySymbol})</Label>
+                      <Label htmlFor="groupPrice">
+                        Price per Session ({currencySymbol})
+                      </Label>
                       <Input
                         id="groupPrice"
                         type="number"
-                        {...register('groupPrice', { 
+                        {...register("groupPrice", {
                           valueAsNumber: true,
-                          setValueAs: (value) => isNaN(value) ? undefined : value
+                          setValueAs: (value) =>
+                            isNaN(value) ? undefined : value,
                         })}
                         placeholder="0.00"
-                        className={errors.groupPrice ? 'border-red-500' : ''}
+                        className={errors.groupPrice ? "border-red-500" : ""}
+                        min={0}
+                        max={10000000}
+                        step="0.01"
                       />
                       {showValidation && errors.groupPrice && (
-                        <p className="text-sm text-red-500 mt-1">{errors.groupPrice.message}</p>
-                      )}
-                      {showValidation && watch('groupActive') && (!watch('groupPrice') || (watch('groupPrice') ?? 0) <= 0) && (
-                        <p className="text-sm text-red-500 mt-1">Group price is required and must be greater than 0</p>
+                        <p className="text-sm text-red-500 mt-1">
+                          {errors.groupPrice.message}
+                        </p>
                       )}
                     </div>
                     <div>
-                      <Label htmlFor="groupOffer">Offer Price ({currencySymbol})</Label>
+                      <Label htmlFor="groupOffer">
+                        Offer Price ({currencySymbol})
+                      </Label>
                       <Input
                         id="groupOffer"
                         type="number"
-                        {...register('groupOffer', { 
+                        {...register("groupOffer", {
                           valueAsNumber: true,
-                          setValueAs: (value) => isNaN(value) ? undefined : value
+                          setValueAs: (value) =>
+                            isNaN(value) ? undefined : value,
                         })}
                         placeholder="0.00"
-                        className={errors.groupOffer ? 'border-red-500' : ''}
+                        className={errors.groupOffer ? "border-red-500" : ""}
+                        min={0}
+                        max={10000000}
+                        step="0.01"
                       />
                       {showValidation && errors.groupOffer && (
-                        <p className="text-sm text-red-500 mt-1">{errors.groupOffer.message}</p>
+                        <p className="text-sm text-red-500 mt-1">
+                          {errors.groupOffer.message}
+                        </p>
                       )}
                     </div>
                   </div>
                 )}
-                
-                {watch('groupActive') && (
+
+                {watch("groupActive") && (
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <Label htmlFor="minGroupSize">Minimum Group Size</Label>
                       <Input
                         id="minGroupSize"
                         type="number"
-                        {...register('minGroupSize', { 
+                        {...register("minGroupSize", {
                           valueAsNumber: true,
-                          setValueAs: (value) => isNaN(value) ? undefined : value
+                          setValueAs: (value) =>
+                            isNaN(value) ? undefined : value,
                         })}
                         placeholder="2"
-                        className={errors.minGroupSize ? 'border-red-500' : ''}
+                        className={errors.minGroupSize ? "border-red-500" : ""}
+                        min={1}
+                        max={100}
+                        step={1}
                       />
                       {showValidation && errors.minGroupSize && (
-                        <p className="text-sm text-red-500 mt-1">{errors.minGroupSize.message}</p>
+                        <p className="text-sm text-red-500 mt-1">
+                          {errors.minGroupSize.message}
+                        </p>
                       )}
                     </div>
                     <div>
@@ -678,15 +1134,21 @@ export function CourseForm({ initialData, onSubmit, onCancel, isLoading = false 
                       <Input
                         id="maxGroupSize"
                         type="number"
-                        {...register('maxGroupSize', { 
+                        {...register("maxGroupSize", {
                           valueAsNumber: true,
-                          setValueAs: (value) => isNaN(value) ? undefined : value
+                          setValueAs: (value) =>
+                            isNaN(value) ? undefined : value,
                         })}
                         placeholder="10"
-                        className={errors.maxGroupSize ? 'border-red-500' : ''}
+                        className={errors.maxGroupSize ? "border-red-500" : ""}
+                        min={1}
+                        max={100}
+                        step={1}
                       />
                       {showValidation && errors.maxGroupSize && (
-                        <p className="text-sm text-red-500 mt-1">{errors.maxGroupSize.message}</p>
+                        <p className="text-sm text-red-500 mt-1">
+                          {errors.maxGroupSize.message}
+                        </p>
                       )}
                     </div>
                   </div>
@@ -708,19 +1170,26 @@ export function CourseForm({ initialData, onSubmit, onCancel, isLoading = false 
             <CardContent className="space-y-4">
               <div className="grid grid-cols-3 gap-4">
                 <div>
-                  <Label htmlFor="sessionDuration">Session Duration (minutes)</Label>
+                  <Label htmlFor="sessionDuration">
+                    Session Duration (minutes)
+                  </Label>
                   <Input
                     id="sessionDuration"
                     type="number"
-                    {...register('sessionDuration', { 
+                    {...register("sessionDuration", {
                       valueAsNumber: true,
-                      setValueAs: (value) => isNaN(value) ? undefined : value
+                      setValueAs: (value) => (isNaN(value) ? undefined : value),
                     })}
                     placeholder="60"
-                    className={errors.sessionDuration ? 'border-red-500' : ''}
+                    className={errors.sessionDuration ? "border-red-500" : ""}
+                    min={15}
+                    max={480}
+                    step={5}
                   />
                   {showValidation && errors.sessionDuration && (
-                    <p className="text-sm text-red-500 mt-1">{errors.sessionDuration.message}</p>
+                    <p className="text-sm text-red-500 mt-1">
+                      {errors.sessionDuration.message}
+                    </p>
                   )}
                 </div>
                 <div>
@@ -728,15 +1197,20 @@ export function CourseForm({ initialData, onSubmit, onCancel, isLoading = false 
                   <Input
                     id="sessionsPerWeek"
                     type="number"
-                    {...register('sessionsPerWeek', { 
+                    {...register("sessionsPerWeek", {
                       valueAsNumber: true,
-                      setValueAs: (value) => isNaN(value) ? undefined : value
+                      setValueAs: (value) => (isNaN(value) ? undefined : value),
                     })}
                     placeholder="2"
-                    className={errors.sessionsPerWeek ? 'border-red-500' : ''}
+                    className={errors.sessionsPerWeek ? "border-red-500" : ""}
+                    min={1}
+                    max={7}
+                    step={1}
                   />
                   {showValidation && errors.sessionsPerWeek && (
-                    <p className="text-sm text-red-500 mt-1">{errors.sessionsPerWeek.message}</p>
+                    <p className="text-sm text-red-500 mt-1">
+                      {errors.sessionsPerWeek.message}
+                    </p>
                   )}
                 </div>
                 <div>
@@ -744,15 +1218,20 @@ export function CourseForm({ initialData, onSubmit, onCancel, isLoading = false 
                   <Input
                     id="totalSessions"
                     type="number"
-                    {...register('totalSessions', { 
+                    {...register("totalSessions", {
                       valueAsNumber: true,
-                      setValueAs: (value) => isNaN(value) ? undefined : value
+                      setValueAs: (value) => (isNaN(value) ? undefined : value),
                     })}
                     placeholder="20"
-                    className={errors.totalSessions ? 'border-red-500' : ''}
+                    className={errors.totalSessions ? "border-red-500" : ""}
+                    min={1}
+                    max={1000}
+                    step={1}
                   />
                   {showValidation && errors.totalSessions && (
-                    <p className="text-sm text-red-500 mt-1">{errors.totalSessions.message}</p>
+                    <p className="text-sm text-red-500 mt-1">
+                      {errors.totalSessions.message}
+                    </p>
                   )}
                 </div>
               </div>
@@ -776,15 +1255,20 @@ export function CourseForm({ initialData, onSubmit, onCancel, isLoading = false 
                   <Input
                     id="minAge"
                     type="number"
-                    {...register('minAge', { 
+                    {...register("minAge", {
                       valueAsNumber: true,
-                      setValueAs: (value) => isNaN(value) ? undefined : value
+                      setValueAs: (value) => (isNaN(value) ? undefined : value),
                     })}
                     placeholder="10"
-                    className={errors.minAge ? 'border-red-500' : ''}
+                    className={errors.minAge ? "border-red-500" : ""}
+                    min={3}
+                    max={100}
+                    step={1}
                   />
                   {showValidation && errors.minAge && (
-                    <p className="text-sm text-red-500 mt-1">{errors.minAge.message}</p>
+                    <p className="text-sm text-red-500 mt-1">
+                      {errors.minAge.message}
+                    </p>
                   )}
                 </div>
                 <div>
@@ -792,27 +1276,35 @@ export function CourseForm({ initialData, onSubmit, onCancel, isLoading = false 
                   <Input
                     id="maxAge"
                     type="number"
-                    {...register('maxAge', { 
+                    {...register("maxAge", {
                       valueAsNumber: true,
-                      setValueAs: (value) => isNaN(value) ? undefined : value
+                      setValueAs: (value) => (isNaN(value) ? undefined : value),
                     })}
                     placeholder="18"
-                    className={errors.maxAge ? 'border-red-500' : ''}
+                    className={errors.maxAge ? "border-red-500" : ""}
+                    min={3}
+                    max={100}
+                    step={1}
                   />
                   {showValidation && errors.maxAge && (
-                    <p className="text-sm text-red-500 mt-1">{errors.maxAge.message}</p>
+                    <p className="text-sm text-red-500 mt-1">
+                      {errors.maxAge.message}
+                    </p>
                   )}
                 </div>
                 <div>
                   <Label htmlFor="prerequisiteLevel">Prerequisite Level</Label>
                   <Input
                     id="prerequisiteLevel"
-                    {...register('prerequisiteLevel')}
+                    {...register("prerequisiteLevel")}
                     placeholder="National 5"
-                    className={errors.prerequisiteLevel ? 'border-red-500' : ''}
+                    className={errors.prerequisiteLevel ? "border-red-500" : ""}
+                    maxLength={100}
                   />
                   {showValidation && errors.prerequisiteLevel && (
-                    <p className="text-sm text-red-500 mt-1">{errors.prerequisiteLevel.message}</p>
+                    <p className="text-sm text-red-500 mt-1">
+                      {errors.prerequisiteLevel.message}
+                    </p>
                   )}
                 </div>
               </div>
@@ -834,21 +1326,25 @@ export function CourseForm({ initialData, onSubmit, onCancel, isLoading = false 
               <CardContent>
                 <div>
                   <Label htmlFor="courseTypeId">Course Type *</Label>
-                  <Select value={watch('courseTypeId')} onValueChange={(value) => setValue('courseTypeId', value)}>
+                  <Select
+                    value={watch("courseTypeId")}
+                    onValueChange={(value) => setValue("courseTypeId", value)}
+                  >
                     <SelectTrigger>
                       <SelectValue placeholder="Select course type" />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent position="item-aligned" sideOffset={5}>
                       {courseTypes.map((t) => (
-                        <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+                        <SelectItem key={t.id} value={t.id}>
+                          {t.name}
+                        </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                   {showValidation && errors.courseTypeId && (
-                    <p className="text-sm text-red-500 mt-1">{errors.courseTypeId.message}</p>
-                  )}
-                  {showValidation && !watch('courseTypeId')?.trim() && (
-                    <p className="text-sm text-red-500 mt-1">Course type is required</p>
+                    <p className="text-sm text-red-500 mt-1">
+                      {errors.courseTypeId.message}
+                    </p>
                   )}
                 </div>
               </CardContent>
@@ -867,20 +1363,30 @@ export function CourseForm({ initialData, onSubmit, onCancel, isLoading = false 
                   <Label>Select Tutors (Optional)</Label>
                   <div className="grid grid-cols-2 gap-2 mt-2">
                     {tutors.map((tutor) => (
-                      <div key={tutor.id} className="flex items-center space-x-2">
+                      <div
+                        key={tutor.id}
+                        className="flex items-center space-x-2"
+                      >
                         <Checkbox
                           id={`tutor-${tutor.id}`}
                           checked={selectedTutors.includes(tutor.id)}
-                          onCheckedChange={(checked) => handleTutorSelection(tutor.id, checked as boolean)}
+                          onCheckedChange={(checked) =>
+                            handleTutorSelection(tutor.id, checked as boolean)
+                          }
                         />
-                        <Label htmlFor={`tutor-${tutor.id}`} className="text-sm">
+                        <Label
+                          htmlFor={`tutor-${tutor.id}`}
+                          className="text-sm"
+                        >
                           {tutor.name}
                         </Label>
                       </div>
                     ))}
                   </div>
                   {showValidation && errors.tutorIds && (
-                    <p className="text-sm text-red-500 mt-1">{errors.tutorIds.message}</p>
+                    <p className="text-sm text-red-500 mt-1">
+                      {errors.tutorIds.message}
+                    </p>
                   )}
                 </div>
 
@@ -888,25 +1394,33 @@ export function CourseForm({ initialData, onSubmit, onCancel, isLoading = false 
                   <div>
                     <Label htmlFor="primaryTutorId">Primary Tutor</Label>
                     <Select
-                      value={watch('primaryTutorId')}
-                      onValueChange={(value) => setValue('primaryTutorId', value)}
+                      value={watch("primaryTutorId")}
+                      onValueChange={(value) =>
+                        setValue("primaryTutorId", value)
+                      }
                     >
-                      <SelectTrigger className={errors.primaryTutorId ? 'border-red-500' : ''}>
+                      <SelectTrigger
+                        className={
+                          errors.primaryTutorId ? "border-red-500" : ""
+                        }
+                      >
                         <SelectValue placeholder="Select primary tutor" />
                       </SelectTrigger>
-                      <SelectContent>
+                      <SelectContent position="item-aligned" sideOffset={5}>
                         {selectedTutors.map((tutorId) => {
-                          const tutor = tutors.find(t => t.id === tutorId)
+                          const tutor = tutors.find((t) => t.id === tutorId);
                           return tutor ? (
                             <SelectItem key={tutorId} value={tutorId}>
                               {tutor.name}
                             </SelectItem>
-                          ) : null
+                          ) : null;
                         })}
                       </SelectContent>
                     </Select>
                     {showValidation && errors.primaryTutorId && (
-                      <p className="text-sm text-red-500 mt-1">{errors.primaryTutorId.message}</p>
+                      <p className="text-sm text-red-500 mt-1">
+                        {errors.primaryTutorId.message}
+                      </p>
                     )}
                   </div>
                 )}
@@ -925,20 +1439,31 @@ export function CourseForm({ initialData, onSubmit, onCancel, isLoading = false 
                 <div>
                   <Label htmlFor="status">Status</Label>
                   <Select
-                    value={watch('status')}
-                    onValueChange={(value) => setValue('status', value as 'DRAFT' | 'PUBLISHED' | 'ARCHIVED')}
+                    value={watch("status")}
+                    onValueChange={(value) =>
+                      setValue(
+                        "status",
+                        value as "DRAFT" | "PUBLISHED" | "ARCHIVED",
+                      )
+                    }
                   >
-                    <SelectTrigger className={errors.status ? 'border-red-500' : ''}>
+                    <SelectTrigger
+                      className={errors.status ? "border-red-500" : ""}
+                    >
                       <SelectValue placeholder="Select status" />
                     </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="DRAFT">Draft (Not Published)</SelectItem>
+                    <SelectContent position="item-aligned" sideOffset={5}>
+                      <SelectItem value="DRAFT">
+                        Draft (Not Published)
+                      </SelectItem>
                       <SelectItem value="PUBLISHED">Published</SelectItem>
                       <SelectItem value="ARCHIVED">Archived</SelectItem>
                     </SelectContent>
                   </Select>
                   {showValidation && errors.status && (
-                    <p className="text-sm text-red-500 mt-1">{errors.status.message}</p>
+                    <p className="text-sm text-red-500 mt-1">
+                      {errors.status.message}
+                    </p>
                   )}
                 </div>
               </CardContent>
@@ -961,24 +1486,32 @@ export function CourseForm({ initialData, onSubmit, onCancel, isLoading = false 
                   <Label htmlFor="primaryImage">Primary Image URL</Label>
                   <Input
                     id="primaryImage"
-                    {...register('primaryImage')}
+                    {...register("primaryImage")}
                     placeholder="https://example.com/image.jpg"
-                    className={errors.primaryImage ? 'border-red-500' : ''}
+                    className={errors.primaryImage ? "border-red-500" : ""}
+                    type="url"
+                    maxLength={2000}
                   />
                   {showValidation && errors.primaryImage && (
-                    <p className="text-sm text-red-500 mt-1">{errors.primaryImage.message}</p>
+                    <p className="text-sm text-red-500 mt-1">
+                      {errors.primaryImage.message}
+                    </p>
                   )}
                 </div>
                 <div>
                   <Label htmlFor="secondaryImage">Secondary Image URL</Label>
                   <Input
                     id="secondaryImage"
-                    {...register('secondaryImage')}
+                    {...register("secondaryImage")}
                     placeholder="https://example.com/image2.jpg"
-                    className={errors.secondaryImage ? 'border-red-500' : ''}
+                    className={errors.secondaryImage ? "border-red-500" : ""}
+                    type="url"
+                    maxLength={2000}
                   />
                   {showValidation && errors.secondaryImage && (
-                    <p className="text-sm text-red-500 mt-1">{errors.secondaryImage.message}</p>
+                    <p className="text-sm text-red-500 mt-1">
+                      {errors.secondaryImage.message}
+                    </p>
                   )}
                 </div>
               </div>
@@ -987,32 +1520,45 @@ export function CourseForm({ initialData, onSubmit, onCancel, isLoading = false 
                 <Label htmlFor="videoUrl">Video URL</Label>
                 <Input
                   id="videoUrl"
-                  {...register('videoUrl')}
+                  {...register("videoUrl")}
                   placeholder="https://youtube.com/watch?v=..."
-                  className={errors.videoUrl ? 'border-red-500' : ''}
+                  className={errors.videoUrl ? "border-red-500" : ""}
+                  type="url"
+                  maxLength={2000}
                 />
                 {showValidation && errors.videoUrl && (
-                  <p className="text-sm text-red-500 mt-1">{errors.videoUrl.message}</p>
+                  <p className="text-sm text-red-500 mt-1">
+                    {errors.videoUrl.message}
+                  </p>
                 )}
               </div>
 
               <div>
                 <Label htmlFor="difficulty">Difficulty Level</Label>
                 <Select
-                  value={watch('difficulty')}
-                  onValueChange={(value) => setValue('difficulty', value as 'BEGINNER' | 'INTERMEDIATE' | 'ADVANCED')}
+                  value={watch("difficulty")}
+                  onValueChange={(value) =>
+                    setValue(
+                      "difficulty",
+                      value as "BEGINNER" | "INTERMEDIATE" | "ADVANCED",
+                    )
+                  }
                 >
-                  <SelectTrigger className={errors.difficulty ? 'border-red-500' : ''}>
+                  <SelectTrigger
+                    className={errors.difficulty ? "border-red-500" : ""}
+                  >
                     <SelectValue placeholder="Select difficulty level" />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent position="item-aligned" sideOffset={5}>
                     <SelectItem value="BEGINNER">Beginner</SelectItem>
                     <SelectItem value="INTERMEDIATE">Intermediate</SelectItem>
                     <SelectItem value="ADVANCED">Advanced</SelectItem>
                   </SelectContent>
                 </Select>
                 {showValidation && errors.difficulty && (
-                  <p className="text-sm text-red-500 mt-1">{errors.difficulty.message}</p>
+                  <p className="text-sm text-red-500 mt-1">
+                    {errors.difficulty.message}
+                  </p>
                 )}
               </div>
 
@@ -1023,15 +1569,22 @@ export function CourseForm({ initialData, onSubmit, onCancel, isLoading = false 
                     value={newTag}
                     onChange={(e) => setNewTag(e.target.value)}
                     placeholder="Add a tag"
-                    onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), addTag())}
+                    onKeyPress={(e) =>
+                      e.key === "Enter" && (e.preventDefault(), addTag())
+                    }
+                    maxLength={50}
                   />
                   <Button type="button" onClick={addTag} size="sm">
                     <Plus className="w-4 h-4" />
                   </Button>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  {watch('tags').map((tag, index) => (
-                    <Badge key={index} variant="secondary" className="flex items-center gap-1">
+                  {watch("tags").map((tag, index) => (
+                    <Badge
+                      key={index}
+                      variant="secondary"
+                      className="flex items-center gap-1"
+                    >
                       {tag}
                       <button
                         type="button"
@@ -1044,7 +1597,9 @@ export function CourseForm({ initialData, onSubmit, onCancel, isLoading = false 
                   ))}
                 </div>
                 {showValidation && errors.tags && (
-                  <p className="text-sm text-red-500 mt-1">{errors.tags.message}</p>
+                  <p className="text-sm text-red-500 mt-1">
+                    {errors.tags.message}
+                  </p>
                 )}
               </div>
             </CardContent>
@@ -1060,11 +1615,18 @@ export function CourseForm({ initialData, onSubmit, onCancel, isLoading = false 
                 Previous
               </Button>
             )}
-            <Button type="button" variant="outline" onClick={(e) => { e.preventDefault(); onCancel(); }}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={(e) => {
+                e.preventDefault();
+                onCancel();
+              }}
+            >
               Cancel
             </Button>
           </div>
-          
+
           <div className="flex gap-3">
             {currentStep < STEPS.length ? (
               <Button type="button" onClick={nextStep}>
@@ -1073,12 +1635,12 @@ export function CourseForm({ initialData, onSubmit, onCancel, isLoading = false 
               </Button>
             ) : (
               <Button type="submit" disabled={isLoading}>
-                {isLoading ? 'Saving...' : 'Save Course'}
+                {isLoading ? "Saving..." : "Save Course"}
               </Button>
             )}
           </div>
         </div>
       </form>
     </div>
-  )
+  );
 }
