@@ -411,10 +411,20 @@ export default function UsersPage() {
                             </div>
                           </TableCell>
                           <TableCell>
-                            <div className="flex items-center gap-2 text-sm text-gray-600">
-                              <Phone className="w-3 h-3" />
-                              {user.phone}
-                            </div>
+                            {
+                              user.phone ? (
+                                <a
+                                  href={`tel:${user.phone?.replace(/\D/g, "")}`}
+                                  className="flex items-center gap-2 text-sm text-gray-600 hover:text-blue-600 transition-colors"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <Phone className="w-3 h-3" />
+                                  {user.phone}
+                                </a>
+                              ) : (
+                                <span className="text-sm text-gray-400">N/A</span>
+                              )
+                            }
                           </TableCell>
                           <TableCell>
                             <Badge variant="secondary" className={getRoleBadgeColor(user.role)}>

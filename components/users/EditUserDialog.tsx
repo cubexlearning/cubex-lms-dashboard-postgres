@@ -2,6 +2,10 @@
 
 import { useState, useEffect } from "react"
 import { useSession } from "next-auth/react"
+import { useForm } from "react-hook-form"
+import { zodResolver } from "@hookform/resolvers/zod"
+import * as z from "zod"
+import { isValidPhoneNumber } from "libphonenumber-js"
 import {
   Dialog,
   DialogContent,
@@ -32,42 +36,206 @@ interface EditUserDialogProps {
   userId: string | null
 }
 
+// Zod validation schema
+const editUserSchema = z.object({
+  email: z.string()
+    .min(1, "Email is required")
+    .max(100, "Email must not exceed 100 characters")
+    .email("Invalid email address")
+    .toLowerCase(),
+  phone: z.string()
+    .min(1, "Phone is required")
+    .refine((val) => {
+      try {
+        return isValidPhoneNumber(val)
+      } catch {
+        return false
+      }
+    }, "Invalid phone number format"),
+  role: z.string().min(1, "Role is required"),
+  status: z.enum(["ACTIVE", "INACTIVE", "SUSPENDED"]),
+  firstName: z.string()
+    .min(1, "First name is required")
+    .min(2, "First name must be at least 2 characters")
+    .max(50, "First name must not exceed 50 characters")
+    .regex(/^[a-zA-Z\s'-]+$/, "First name can only contain letters, spaces, hyphens, and apostrophes"),
+  lastName: z.string()
+    .min(1, "Last name is required")
+    .min(2, "Last name must be at least 2 characters")
+    .max(50, "Last name must not exceed 50 characters")
+    .regex(/^[a-zA-Z\s'-]+$/, "Last name can only contain letters, spaces, hyphens, and apostrophes"),
+  dateOfBirth: z.string().optional(),
+  joinedDate: z.string().optional(),
+  bio: z.string()
+    .max(500, "Bio must not exceed 500 characters")
+    .optional(),
+  password: z.string().optional(),
+  changePassword: z.boolean().default(false),
+  
+  // Tutor fields
+  qualifications: z.array(
+    z.string()
+      .min(2, "Qualification must be at least 2 characters")
+      .max(100, "Qualification must not exceed 100 characters")
+  )
+    .max(5, "Maximum 5 qualifications allowed")
+    .default([]),
+  qualificationInput: z.string()
+    .max(100, "Qualification must not exceed 100 characters")
+    .default(""),
+  experience: z.string()
+    .refine((val) => {
+      if (!val) return true // Allow empty for non-tutors
+      const num = parseInt(val)
+      return !isNaN(num) && num >= 0 && num <= 50
+    }, "Experience must be between 0 and 50 years")
+    .optional(),
+  specializations: z.array(
+    z.string()
+      .min(2, "Specialization must be at least 2 characters")
+      .max(100, "Specialization must not exceed 100 characters")
+  )
+    .max(5, "Maximum 5 specializations allowed")
+    .default([]),
+  specializationInput: z.string()
+    .max(100, "Specialization must not exceed 100 characters")
+    .default(""),
+  hourlyRate: z.string()
+    .refine((val) => {
+      if (!val) return true
+      const num = parseFloat(val)
+      return !isNaN(num) && num >= 0 && num <= 10000
+    }, "Hourly rate must be between 0 and 10000")
+    .optional(),
+  
+  // Student fields
+  ageGroup: z.string().optional(),
+  parentName: z.string()
+    .max(100, "Parent name must not exceed 100 characters")
+    .regex(/^[a-zA-Z\s'-]*$/, "Parent name can only contain letters, spaces, hyphens, and apostrophes")
+    .optional(),
+  parentEmail: z.string()
+    .max(100, "Email must not exceed 100 characters")
+    .email("Invalid email")
+    .toLowerCase()
+    .optional()
+    .or(z.literal("")),
+  parentPhone: z.string()
+    .refine((val) => {
+      if (!val) return true
+      try {
+        return isValidPhoneNumber(val)
+      } catch {
+        return false
+      }
+    }, "Invalid phone number format")
+    .optional(),
+  address: z.string()
+    .max(200, "Address must not exceed 200 characters")
+    .optional(),
+  emergencyContact: z.string()
+    .refine((val) => {
+      if (!val) return true
+      try {
+        return isValidPhoneNumber(val)
+      } catch {
+        return false
+      }
+    }, "Invalid phone number format")
+    .optional(),
+  guardianRelation: z.string()
+    .max(50, "Relation must not exceed 50 characters")
+    .regex(/^[a-zA-Z\s'-]*$/, "Relation can only contain letters, spaces, hyphens, and apostrophes")
+    .optional(),
+}).refine((data) => {
+  // If changePassword is true, password must be at least 8 characters
+  if (data.changePassword && (!data.password || data.password.length < 8)) {
+    return false
+  }
+  return true
+}, {
+  message: "Password must be at least 8 characters when changing password",
+  path: ["password"]
+}).refine((data) => {
+  // If role is TUTOR, qualifications are required
+  if (data.role === 'TUTOR' && data.qualifications.length === 0) {
+    return false
+  }
+  return true
+}, {
+  message: "At least one qualification is required for tutors",
+  path: ["qualificationInput"]
+}).refine((data) => {
+  // If role is TUTOR, specializations are required
+  if (data.role === 'TUTOR' && data.specializations.length === 0) {
+    return false
+  }
+  return true
+}, {
+  message: "At least one specialization is required for tutors",
+  path: ["specializationInput"]
+}).refine((data) => {
+  // If role is TUTOR, experience is required
+  if (data.role === 'TUTOR' && !data.experience) {
+    return false
+  }
+  return true
+}, {
+  message: "Experience is required for tutors",
+  path: ["experience"]
+})
+
+type EditUserFormData = z.infer<typeof editUserSchema>
+
 export function EditUserDialog({ open, onOpenChange, onSuccess, userId }: EditUserDialogProps) {
   const { data: session } = useSession()
-  const [loading, setLoading] = useState(false)
   const [fetchingUser, setFetchingUser] = useState(false)
   const [selectedRole, setSelectedRole] = useState<string>("")
-  const [changePassword, setChangePassword] = useState(false)
 
-  const [formData, setFormData] = useState({
-    email: "",
-    phone: "",
-    role: "",
-    status: "ACTIVE",
-    firstName: "",
-    lastName: "",
-    dateOfBirth: "",
-    joinedDate: "",
-    bio: "",
-    password: "",
-    
-    // Tutor fields
-    qualifications: [] as string[],
-    qualificationInput: "",
-    experience: "",
-    specializations: [] as string[],
-    specializationInput: "",
-    hourlyRate: "",
-    
-    // Student fields
-    ageGroup: "",
-    parentName: "",
-    parentEmail: "",
-    parentPhone: "",
-    address: "",
-    emergencyContact: "",
-    guardianRelation: "",
+  const form = useForm<EditUserFormData>({
+    resolver: zodResolver(editUserSchema),
+    defaultValues: {
+      email: "",
+      phone: "",
+      role: "",
+      status: "ACTIVE",
+      firstName: "",
+      lastName: "",
+      dateOfBirth: "",
+      joinedDate: "",
+      bio: "",
+      password: "",
+      changePassword: false,
+      qualifications: [],
+      qualificationInput: "",
+      experience: "",
+      specializations: [],
+      specializationInput: "",
+      hourlyRate: "",
+      ageGroup: "",
+      parentName: "",
+      parentEmail: "",
+      parentPhone: "",
+      address: "",
+      emergencyContact: "",
+      guardianRelation: "",
+    },
+    mode: "onChange"
   })
+
+  const { handleSubmit, reset, setValue:_setValue, watch, formState: { errors, isSubmitting } } = form
+
+
+  const setValue = (key:keyof EditUserFormData,value:any)=>{
+    _setValue(key,value,{
+      shouldDirty:true,
+      shouldTouch:true,
+      shouldValidate:true
+    })
+  } 
+
+  const watchedRole = watch("role")
+  const watchedChangePassword = watch("changePassword")
 
   useEffect(() => {
     if (open && userId) {
@@ -94,7 +262,7 @@ export function EditUserDialog({ open, onOpenChange, onSuccess, userId }: EditUs
       const firstName = user.firstName || (nameParts.length > 0 ? nameParts[0] : "")
       const lastName = user.lastName || (nameParts.length > 1 ? nameParts.slice(1).join(' ') : "")
       
-      setFormData({
+      reset({
         email: user.email || "",
         phone: user.phone || "",
         role: user.role || "",
@@ -105,6 +273,7 @@ export function EditUserDialog({ open, onOpenChange, onSuccess, userId }: EditUs
         joinedDate: user.createdAt ? new Date(user.createdAt).toISOString().split('T')[0] : "",
         bio: user.bio || "",
         password: "",
+        changePassword: false,
         
         qualifications: user.qualifications || [],
         qualificationInput: "",
@@ -139,52 +308,49 @@ export function EditUserDialog({ open, onOpenChange, onSuccess, userId }: EditUs
     return false
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setLoading(true)
-
+  const onSubmit = async (data: EditUserFormData) => {
     try {
       // Dynamically calculate full name from firstName and lastName
-      const fullName = `${formData.firstName.trim()} ${formData.lastName.trim()}`.trim()
+      const fullName = `${data.firstName.trim()} ${data.lastName.trim()}`.trim()
       
       const payload: any = {
-        name: fullName || formData.email.split('@')[0], // Fallback to email username if no names provided
-        email: formData.email,
-        phone: formData.phone,
-        status: formData.status,
-        firstName: formData.firstName || undefined,
-        lastName: formData.lastName || undefined,
-        dateOfBirth: formData.dateOfBirth || undefined,
-        createdAt: formData.joinedDate ? new Date(formData.joinedDate).toISOString() : undefined,
-        bio: formData.bio || undefined,
+        name: fullName || data.email.split('@')[0],
+        email: data.email,
+        phone: data.phone,
+        status: data.status,
+        firstName: data.firstName || undefined,
+        lastName: data.lastName || undefined,
+        dateOfBirth: data.dateOfBirth || undefined,
+        createdAt: data.joinedDate ? new Date(data.joinedDate).toISOString() : undefined,
+        bio: data.bio || undefined,
       }
 
       // Only include role if user can change it
-      if (canEditRole(selectedRole) && formData.role !== selectedRole) {
-        payload.role = formData.role
+      if (canEditRole(selectedRole) && data.role !== selectedRole) {
+        payload.role = data.role
       }
 
       // Include password only if changePassword is checked
-      if (changePassword && formData.password) {
-        payload.password = formData.password
+      if (data.changePassword && data.password) {
+        payload.password = data.password
       }
 
       // Add role-specific fields
-      if (formData.role === 'TUTOR') {
-        payload.qualifications = formData.qualifications
-        payload.experience = formData.experience ? parseInt(formData.experience) : undefined
-        payload.specializations = formData.specializations
-        payload.hourlyRate = formData.hourlyRate ? parseFloat(formData.hourlyRate) : undefined
+      if (data.role === 'TUTOR') {
+        payload.qualifications = data.qualifications
+        payload.experience = data.experience ? parseInt(data.experience) : undefined
+        payload.specializations = data.specializations
+        payload.hourlyRate = data.hourlyRate ? parseFloat(data.hourlyRate) : undefined
       }
 
-      if (formData.role === 'STUDENT') {
-        payload.ageGroup = formData.ageGroup || undefined
-        payload.parentName = formData.parentName || undefined
-        payload.parentEmail = formData.parentEmail || undefined
-        payload.parentPhone = formData.parentPhone || undefined
-        payload.address = formData.address || undefined
-        payload.emergencyContact = formData.emergencyContact || undefined
-        payload.guardianRelation = formData.guardianRelation || undefined
+      if (data.role === 'STUDENT') {
+        payload.ageGroup = data.ageGroup || undefined
+        payload.parentName = data.parentName || undefined
+        payload.parentEmail = data.parentEmail || undefined
+        payload.parentPhone = data.parentPhone || undefined
+        payload.address = data.address || undefined
+        payload.emergencyContact = data.emergencyContact || undefined
+        payload.guardianRelation = data.guardianRelation || undefined
       }
 
       const response = await fetch(`/api/users/${userId}`, {
@@ -193,10 +359,10 @@ export function EditUserDialog({ open, onOpenChange, onSuccess, userId }: EditUs
         body: JSON.stringify(payload),
       })
 
-      const data = await response.json()
+      const responseData = await response.json()
 
       if (!response.ok) {
-        throw new Error(data.error || 'Failed to update user')
+        throw new Error(responseData.error || 'Failed to update user')
       }
 
       toast.success('User updated successfully')
@@ -205,74 +371,83 @@ export function EditUserDialog({ open, onOpenChange, onSuccess, userId }: EditUs
 
     } catch (error: any) {
       toast.error(error.message || 'Failed to update user')
-    } finally {
-      setLoading(false)
     }
   }
 
   const handleClose = () => {
-    setFormData({
-      email: "",
-      phone: "",
-      role: "",
-      status: "ACTIVE",
-      firstName: "",
-      lastName: "",
-      dateOfBirth: "",
-      joinedDate: "",
-      bio: "",
-      password: "",
-      qualifications: [],
-      qualificationInput: "",
-      experience: "",
-      specializations: [],
-      specializationInput: "",
-      hourlyRate: "",
-      ageGroup: "",
-      parentName: "",
-      parentEmail: "",
-      parentPhone: "",
-      address: "",
-      emergencyContact: "",
-      guardianRelation: "",
-    })
+    reset()
     setSelectedRole("")
-    setChangePassword(false)
     onOpenChange(false)
   }
 
   const addQualification = () => {
-    if (formData.qualificationInput.trim()) {
-      setFormData({
-        ...formData,
-        qualifications: [...formData.qualifications, formData.qualificationInput.trim()],
-        qualificationInput: ""
-      })
+    const input = watch("qualificationInput")
+    const current = watch("qualifications")
+    
+    if (current.length >= 5) {
+      toast.error("Maximum 5 qualifications allowed")
+      return
     }
+    
+    const trimmedInput = input.trim()
+    
+    if (!trimmedInput) {
+      toast.error("Qualification cannot be empty")
+      return
+    }
+    
+    if (trimmedInput.length < 2) {
+      toast.error("Qualification must be at least 2 characters")
+      return
+    }
+    
+    if (trimmedInput.length > 100) {
+      toast.error("Qualification must not exceed 100 characters")
+      return
+    }
+    
+    setValue("qualifications", [...current, trimmedInput])
+    setValue("qualificationInput", "")
   }
 
   const removeQualification = (index: number) => {
-    setFormData({
-      ...formData,
-      qualifications: formData.qualifications.filter((_, i) => i !== index)
-    })
+    const current = watch("qualifications")
+    setValue("qualifications", current.filter((_, i) => i !== index))
   }
 
   const addSpecialization = () => {
-    if (formData.specializationInput.trim()) {
-      setFormData({
-        ...formData,
-        specializations: [...formData.specializations, formData.specializationInput.trim()],
-        specializationInput: ""
-      })
+    const input = watch("specializationInput")
+    const current = watch("specializations")
+    
+    if (current.length >= 5) {
+      toast.error("Maximum 5 specializations allowed")
+      return
     }
+    
+    const trimmedInput = input.trim()
+    
+    if (!trimmedInput) {
+      toast.error("Specialization cannot be empty")
+      return
+    }
+    
+    if (trimmedInput.length < 2) {
+      toast.error("Specialization must be at least 2 characters")
+      return
+    }
+    
+    if (trimmedInput.length > 100) {
+      toast.error("Specialization must not exceed 100 characters")
+      return
+    }
+    
+    setValue("specializations", [...current, trimmedInput])
+    setValue("specializationInput", "")
   }
 
   const removeSpecialization = (index: number) => {
-    setFormData({
-      ...formData,
-      specializations: formData.specializations.filter((_, i) => i !== index)
-    })
+    const current = watch("specializations")
+    setValue("specializations", current.filter((_, i) => i !== index))
   }
 
   return (
@@ -290,7 +465,7 @@ export function EditUserDialog({ open, onOpenChange, onSuccess, userId }: EditUs
             <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
           </div>
         ) : (
-          <form onSubmit={handleSubmit}>
+          <form onSubmit={handleSubmit(onSubmit)}>
             <div className="space-y-4 py-4">
               {/* Basic Information */}
               <div className="space-y-4">
@@ -301,20 +476,32 @@ export function EditUserDialog({ open, onOpenChange, onSuccess, userId }: EditUs
                     <Label htmlFor="firstName">First Name *</Label>
                     <Input
                       id="firstName"
-                      value={formData.firstName}
-                      onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
+                      {...form.register("firstName")}
                       required
+                      minLength={2}
+                      maxLength={50}
+                      pattern="[a-zA-Z\s'-]+"
+                      placeholder="Enter first name"
                     />
+                    {errors.firstName && (
+                      <p className="text-xs text-red-500 mt-1">{errors.firstName.message}</p>
+                    )}
                   </div>
 
                   <div>
                     <Label htmlFor="lastName">Last Name *</Label>
                     <Input
                       id="lastName"
-                      value={formData.lastName}
-                      onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
+                      {...form.register("lastName")}
                       required
+                      minLength={2}
+                      maxLength={50}
+                      pattern="[a-zA-Z\s'-]+"
+                      placeholder="Enter last name"
                     />
+                    {errors.lastName && (
+                      <p className="text-xs text-red-500 mt-1">{errors.lastName.message}</p>
+                    )}
                   </div>
                 </div>
 
@@ -322,8 +509,8 @@ export function EditUserDialog({ open, onOpenChange, onSuccess, userId }: EditUs
                   <Label htmlFor="role">Role</Label>
                   {canEditRole(selectedRole) ? (
                     <Select
-                      value={formData.role}
-                      onValueChange={(value) => setFormData({ ...formData, role: value })}
+                      value={watchedRole}
+                      onValueChange={(value) => setValue("role", value)}
                     >
                       <SelectTrigger>
                         <SelectValue />
@@ -340,7 +527,10 @@ export function EditUserDialog({ open, onOpenChange, onSuccess, userId }: EditUs
                       </SelectContent>
                     </Select>
                   ) : (
-                    <Input value={formData.role.replace('_', ' ')} disabled className="bg-gray-100" />
+                    <Input value={watchedRole.replace('_', ' ')} disabled className="bg-gray-100" />
+                  )}
+                  {errors.role && (
+                    <p className="text-xs text-red-500 mt-1">{errors.role.message}</p>
                   )}
                 </div>
 
@@ -350,20 +540,28 @@ export function EditUserDialog({ open, onOpenChange, onSuccess, userId }: EditUs
                     <Input
                       id="email"
                       type="email"
-                      value={formData.email}
-                      onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                      {...form.register("email")}
                       required
+                      maxLength={100}
+                      placeholder="user@example.com"
                     />
+                    {errors.email && (
+                      <p className="text-xs text-red-500 mt-1">{errors.email.message}</p>
+                    )}
                   </div>
 
                   <div>
                     <Label htmlFor="phone">Phone *</Label>
                     <Input
                       id="phone"
-                      value={formData.phone}
-                      onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                      type="tel"
+                      {...form.register("phone")}
                       required
+                      placeholder="+1234567890"
                     />
+                    {errors.phone && (
+                      <p className="text-xs text-red-500 mt-1">{errors.phone.message}</p>
+                    )}
                   </div>
                 </div>
 
@@ -372,8 +570,7 @@ export function EditUserDialog({ open, onOpenChange, onSuccess, userId }: EditUs
                   <Input
                     id="dateOfBirth"
                     type="date"
-                    value={formData.dateOfBirth}
-                    onChange={(e) => setFormData({ ...formData, dateOfBirth: e.target.value })}
+                    {...form.register("dateOfBirth")}
                     max={new Date().toISOString().split('T')[0]}
                     min="1900-01-01"
                   />
@@ -384,8 +581,7 @@ export function EditUserDialog({ open, onOpenChange, onSuccess, userId }: EditUs
                   <Input
                     id="joinedDate"
                     type="date"
-                    value={formData.joinedDate}
-                    onChange={(e) => setFormData({ ...formData, joinedDate: e.target.value })}
+                    {...form.register("joinedDate")}
                     max={new Date().toISOString().split('T')[0]}
                     min="2000-01-01"
                   />
@@ -400,48 +596,67 @@ export function EditUserDialog({ open, onOpenChange, onSuccess, userId }: EditUs
                 <div className="flex items-center space-x-2">
                   <Checkbox
                     id="changePassword"
-                    checked={changePassword}
-                    onCheckedChange={(checked) => setChangePassword(checked as boolean)}
+                    checked={watchedChangePassword}
+                    onCheckedChange={(checked) => setValue("changePassword", checked as boolean)}
                   />
                   <Label htmlFor="changePassword" className="cursor-pointer">
                     Change Password
                   </Label>
                 </div>
 
-                {changePassword && (
+                {watchedChangePassword && (
                   <div>
                     <Label htmlFor="password">New Password</Label>
                     <Input
                       id="password"
                       type="password"
-                      value={formData.password}
-                      onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                      placeholder="Enter new password (min 8 characters)"
+                      {...form.register("password")}
                       minLength={8}
+                      maxLength={100}
+                      placeholder="Enter new password (min 8 characters)"
                     />
+                    {errors.password && (
+                      <p className="text-xs text-red-500 mt-1">{errors.password.message}</p>
+                    )}
                   </div>
                 )}
               </div>
 
               {/* Tutor-specific fields */}
-              {(formData.role === 'TUTOR') && (
+              {watchedRole === 'TUTOR' && (
                 <div className="space-y-4 border-t pt-4">
                   <h3 className="font-medium text-sm">Tutor Information</h3>
                   
                   <div>
-                    <Label htmlFor="qualifications">Qualifications</Label>
+                    <Label htmlFor="qualifications">Qualifications * ({watch("qualifications").length}/5)</Label>
                     <div className="flex gap-2">
                       <Input
                         id="qualifications"
-                        value={formData.qualificationInput}
-                        onChange={(e) => setFormData({ ...formData, qualificationInput: e.target.value })}
+                        {...form.register("qualificationInput")}
+                        minLength={2}
+                        maxLength={100}
                         onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), addQualification())}
-                        placeholder="Add qualification and press Enter"
+                        placeholder="Add qualification and press Enter (min 2 chars)"
+                        className={errors.qualificationInput ? "border-red-500" : ""}
+                        disabled={watch("qualifications").length >= 5}
                       />
-                      <Button type="button" onClick={addQualification} variant="outline">Add</Button>
+                      <Button 
+                        type="button" 
+                        onClick={addQualification} 
+                        variant="outline"
+                        disabled={watch("qualifications").length >= 5}
+                      >
+                        Add
+                      </Button>
                     </div>
+                    {errors.qualificationInput && (
+                      <p className="text-sm text-red-500 mt-1">{errors.qualificationInput.message}</p>
+                    )}
+                    {errors.qualifications && (
+                      <p className="text-sm text-red-500 mt-1">{errors.qualifications.message}</p>
+                    )}
                     <div className="flex flex-wrap gap-2 mt-2">
-                      {formData.qualifications.map((qual, index) => (
+                      {watch("qualifications").map((qual, index) => (
                         <div key={index} className="bg-blue-100 text-blue-800 px-2 py-1 rounded text-sm flex items-center gap-1">
                           {qual}
                           <button type="button" onClick={() => removeQualification(index)} className="text-blue-600 hover:text-blue-800">×</button>
@@ -451,19 +666,35 @@ export function EditUserDialog({ open, onOpenChange, onSuccess, userId }: EditUs
                   </div>
 
                   <div>
-                    <Label htmlFor="specializations">Specializations</Label>
+                    <Label htmlFor="specializations">Specializations * ({watch("specializations").length}/5)</Label>
                     <div className="flex gap-2">
                       <Input
                         id="specializations"
-                        value={formData.specializationInput}
-                        onChange={(e) => setFormData({ ...formData, specializationInput: e.target.value })}
+                        {...form.register("specializationInput")}
+                        minLength={2}
+                        maxLength={100}
                         onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), addSpecialization())}
-                        placeholder="Add specialization and press Enter"
+                        placeholder="Add specialization and press Enter (min 2 chars)"
+                        className={errors.specializationInput ? "border-red-500" : ""}
+                        disabled={watch("specializations").length >= 5}
                       />
-                      <Button type="button" onClick={addSpecialization} variant="outline">Add</Button>
+                      <Button 
+                        type="button" 
+                        onClick={addSpecialization} 
+                        variant="outline"
+                        disabled={watch("specializations").length >= 5}
+                      >
+                        Add
+                      </Button>
                     </div>
+                    {errors.specializationInput && (
+                      <p className="text-sm text-red-500 mt-1">{errors.specializationInput.message}</p>
+                    )}
+                    {errors.specializations && (
+                      <p className="text-sm text-red-500 mt-1">{errors.specializations.message}</p>
+                    )}
                     <div className="flex flex-wrap gap-2 mt-2">
-                      {formData.specializations.map((spec, index) => (
+                      {watch("specializations").map((spec, index) => (
                         <div key={index} className="bg-purple-100 text-purple-800 px-2 py-1 rounded text-sm flex items-center gap-1">
                           {spec}
                           <button type="button" onClick={() => removeSpecialization(index)} className="text-purple-600 hover:text-purple-800">×</button>
@@ -473,13 +704,21 @@ export function EditUserDialog({ open, onOpenChange, onSuccess, userId }: EditUs
                   </div>
 
                   <div>
-                    <Label htmlFor="experience">Experience (years)</Label>
+                    <Label htmlFor="experience">Experience (years) *</Label>
                     <Input
                       id="experience"
                       type="number"
-                      value={formData.experience}
-                      onChange={(e) => setFormData({ ...formData, experience: e.target.value })}
+                      {...form.register("experience")}
+                      min={0}
+                      max={50}
+                      step={1}
+                      placeholder="0"
+                      required
+                      className={errors.experience ? "border-red-500" : ""}
                     />
+                    {errors.experience && (
+                      <p className="text-xs text-red-500 mt-1">{errors.experience.message}</p>
+                    )}
                   </div>
 
                   <div>
@@ -487,25 +726,29 @@ export function EditUserDialog({ open, onOpenChange, onSuccess, userId }: EditUs
                     <Input
                       id="hourlyRate"
                       type="number"
-                      step="0.01"
-                      value={formData.hourlyRate}
-                      onChange={(e) => setFormData({ ...formData, hourlyRate: e.target.value })}
+                      {...form.register("hourlyRate")}
+                      min={0}
+                      max={10000}
+                      step={0.01}
                       placeholder="0.00"
                     />
+                    {errors.hourlyRate && (
+                      <p className="text-xs text-red-500 mt-1">{errors.hourlyRate.message}</p>
+                    )}
                   </div>
                 </div>
               )}
 
               {/* Student-specific fields */}
-              {(formData.role === 'STUDENT') && (
+              {watchedRole === 'STUDENT' && (
                 <div className="space-y-4 border-t pt-4">
                   <h3 className="font-medium text-sm">Student Information</h3>
                   
                   <div>
                     <Label htmlFor="ageGroup">Age Group</Label>
                     <Select
-                      value={formData.ageGroup}
-                      onValueChange={(value) => setFormData({ ...formData, ageGroup: value })}
+                      value={watch("ageGroup")}
+                      onValueChange={(value) => setValue("ageGroup", value)}
                     >
                       <SelectTrigger>
                         <SelectValue placeholder="Select age group" />
@@ -524,19 +767,28 @@ export function EditUserDialog({ open, onOpenChange, onSuccess, userId }: EditUs
                       <Label htmlFor="parentName">Parent/Guardian Name</Label>
                       <Input
                         id="parentName"
-                        value={formData.parentName}
-                        onChange={(e) => setFormData({ ...formData, parentName: e.target.value })}
+                        {...form.register("parentName")}
+                        maxLength={100}
+                        pattern="[a-zA-Z\s'-]*"
+                        placeholder="Enter parent/guardian name"
                       />
+                      {errors.parentName && (
+                        <p className="text-xs text-red-500 mt-1">{errors.parentName.message}</p>
+                      )}
                     </div>
 
                     <div>
                       <Label htmlFor="guardianRelation">Relation</Label>
                       <Input
                         id="guardianRelation"
-                        value={formData.guardianRelation}
-                        onChange={(e) => setFormData({ ...formData, guardianRelation: e.target.value })}
+                        {...form.register("guardianRelation")}
+                        maxLength={50}
+                        pattern="[a-zA-Z\s'-]*"
                         placeholder="e.g., Father, Mother"
                       />
+                      {errors.guardianRelation && (
+                        <p className="text-xs text-red-500 mt-1">{errors.guardianRelation.message}</p>
+                      )}
                     </div>
                   </div>
 
@@ -546,18 +798,26 @@ export function EditUserDialog({ open, onOpenChange, onSuccess, userId }: EditUs
                       <Input
                         id="parentEmail"
                         type="email"
-                        value={formData.parentEmail}
-                        onChange={(e) => setFormData({ ...formData, parentEmail: e.target.value })}
+                        {...form.register("parentEmail")}
+                        maxLength={100}
+                        placeholder="parent@example.com"
                       />
+                      {errors.parentEmail && (
+                        <p className="text-xs text-red-500 mt-1">{errors.parentEmail.message}</p>
+                      )}
                     </div>
 
                     <div>
                       <Label htmlFor="parentPhone">Parent Phone</Label>
                       <Input
                         id="parentPhone"
-                        value={formData.parentPhone}
-                        onChange={(e) => setFormData({ ...formData, parentPhone: e.target.value })}
+                        type="tel"
+                        {...form.register("parentPhone")}
+                        placeholder="+1234567890"
                       />
+                      {errors.parentPhone && (
+                        <p className="text-xs text-red-500 mt-1">{errors.parentPhone.message}</p>
+                      )}
                     </div>
                   </div>
 
@@ -565,19 +825,30 @@ export function EditUserDialog({ open, onOpenChange, onSuccess, userId }: EditUs
                     <Label htmlFor="address">Address</Label>
                     <Textarea
                       id="address"
-                      value={formData.address}
-                      onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                      {...form.register("address")}
                       rows={2}
+                      maxLength={200}
+                      placeholder="Enter full address"
                     />
+                    {errors.address && (
+                      <p className="text-xs text-red-500 mt-1">{errors.address.message}</p>
+                    )}
+                    <p className="text-xs text-gray-500 mt-1">
+                      {watch("address")?.length || 0}/200 characters
+                    </p>
                   </div>
 
                   <div>
                     <Label htmlFor="emergencyContact">Emergency Contact</Label>
                     <Input
                       id="emergencyContact"
-                      value={formData.emergencyContact}
-                      onChange={(e) => setFormData({ ...formData, emergencyContact: e.target.value })}
+                      type="tel"
+                      {...form.register("emergencyContact")}
+                      placeholder="+1234567890"
                     />
+                    {errors.emergencyContact && (
+                      <p className="text-xs text-red-500 mt-1">{errors.emergencyContact.message}</p>
+                    )}
                   </div>
                 </div>
               )}
@@ -586,18 +857,21 @@ export function EditUserDialog({ open, onOpenChange, onSuccess, userId }: EditUs
                 <Label htmlFor="bio">Bio / Notes</Label>
                 <Textarea
                   id="bio"
-                  value={formData.bio}
-                  onChange={(e) => setFormData({ ...formData, bio: e.target.value })}
+                  {...form.register("bio")}
                   rows={2}
+                  maxLength={500}
                   placeholder="Additional information..."
                 />
+                <p className="text-xs text-gray-500 mt-1">
+                  {watch("bio")?.length || 0}/500 characters
+                </p>
               </div>
 
               <div>
                 <Label htmlFor="status">Status</Label>
                 <Select
-                  value={formData.status}
-                  onValueChange={(value) => setFormData({ ...formData, status: value })}
+                  value={watch("status")}
+                  onValueChange={(value) => setValue("status", value as "ACTIVE" | "INACTIVE" | "SUSPENDED")}
                 >
                   <SelectTrigger>
                     <SelectValue />
@@ -612,11 +886,11 @@ export function EditUserDialog({ open, onOpenChange, onSuccess, userId }: EditUs
             </div>
 
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={handleClose} disabled={loading}>
+              <Button type="button" variant="outline" onClick={handleClose} disabled={isSubmitting}>
                 Cancel
               </Button>
-              <Button type="submit" disabled={loading}>
-                {loading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              <Button type="submit" disabled={isSubmitting}>
+                {isSubmitting && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
                 Update User
               </Button>
             </DialogFooter>
@@ -626,4 +900,3 @@ export function EditUserDialog({ open, onOpenChange, onSuccess, userId }: EditUs
     </Dialog>
   )
 }
-
