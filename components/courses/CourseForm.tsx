@@ -243,7 +243,11 @@ const mediaTagsSchema = z.object({
     .array(z.string().min(1).max(50))
     .max(20, "Cannot exceed 20 tags")
     .default([]),
-  difficulty: z.enum(["BEGINNER", "INTERMEDIATE", "ADVANCED"]).optional(),
+  difficulty: z
+    .enum(["BEGINNER", "INTERMEDIATE", "ADVANCED"], {
+      invalid_type_error: "Please select a valid difficulty level",
+    })
+    .optional(),
 });
 
 const courseFormSchema = basicInformationSchema
@@ -351,7 +355,8 @@ export function CourseForm({
   onCancel,
   isLoading = false,
 }: CourseFormProps) {
-  const { getCurrencySymbol } = useSettings();
+  const [loading, setLoading] = useState(false);
+  const { getCurrencySymbol, loading:getCurrencySymbolLoading } = useSettings();
   const currencySymbol = getCurrencySymbol();
   const isEdit = Boolean((initialData as any)?.id);
   const [currentStep, setCurrentStep] = useState(1);
@@ -389,7 +394,7 @@ export function CourseForm({
       tags: initialData?.tags || [],
       tutorIds: initialData?.tutorIds || [],
       status: initialData?.status || "DRAFT",
-      difficulty: initialData?.difficulty,
+      difficulty: initialData?.difficulty || undefined,
       prerequisiteLevel: initialData?.prerequisiteLevel || "",
       primaryImage: initialData?.primaryImage || "",
       secondaryImage: initialData?.secondaryImage || "",
@@ -413,60 +418,61 @@ export function CourseForm({
   useEffect(() => {
     // Normalize and populate initial values for edit mode
     if (initialData) {
+      setLoading(true);
       if (initialData.title) setValue("title", initialData.title);
       if (initialData.shortDescription)
-        setValue("shortDescription", initialData.shortDescription);
+        _setValue("shortDescription", initialData.shortDescription);
       if (initialData.longDescription)
-        setValue("longDescription", initialData.longDescription);
+        _setValue("longDescription", initialData.longDescription);
       if (initialData.categoryId)
-        setValue("categoryId", initialData.categoryId);
+        _setValue("categoryId", initialData.categoryId);
       if (initialData.curriculumId)
-        setValue("curriculumId", initialData.curriculumId);
+        _setValue("curriculumId", initialData.curriculumId);
       if (initialData.courseFormatId)
-        setValue("courseFormatId", initialData.courseFormatId);
+        _setValue("courseFormatId", initialData.courseFormatId);
       if (initialData.courseTypeId)
-        setValue("courseTypeId", initialData.courseTypeId);
+        _setValue("courseTypeId", initialData.courseTypeId);
       if (initialData.status) setValue("status", initialData.status as any);
       if (initialData.difficulty) {
-        // Ensure difficulty matches enum formatting
-        setValue(
+        // Ensure diDifficulty Levelformatting
+        _setValue(
           "difficulty",
           (initialData.difficulty as any).toString().toUpperCase() as any,
         );
       }
       // Numeric fields
       if (typeof (initialData as any).oneToOnePrice !== "undefined")
-        setValue("oneToOnePrice", (initialData as any).oneToOnePrice as any);
+        _setValue("oneToOnePrice", (initialData as any).oneToOnePrice as any);
       if (typeof (initialData as any).oneToOneOffer !== "undefined")
-        setValue("oneToOneOffer", (initialData as any).oneToOneOffer as any);
+        _setValue("oneToOneOffer", (initialData as any).oneToOneOffer as any);
       if (typeof (initialData as any).oneToOneActive !== "undefined")
-        setValue("oneToOneActive", (initialData as any).oneToOneActive as any);
+        _setValue("oneToOneActive", (initialData as any).oneToOneActive as any);
       if (typeof (initialData as any).groupPrice !== "undefined")
-        setValue("groupPrice", (initialData as any).groupPrice as any);
+        _setValue("groupPrice", (initialData as any).groupPrice as any);
       if (typeof (initialData as any).groupOffer !== "undefined")
-        setValue("groupOffer", (initialData as any).groupOffer as any);
+        _setValue("groupOffer", (initialData as any).groupOffer as any);
       if (typeof (initialData as any).groupActive !== "undefined")
-        setValue("groupActive", (initialData as any).groupActive as any);
+        _setValue("groupActive", (initialData as any).groupActive as any);
       if (typeof (initialData as any).maxGroupSize !== "undefined")
-        setValue("maxGroupSize", (initialData as any).maxGroupSize as any);
+        _setValue("maxGroupSize", (initialData as any).maxGroupSize as any);
       if (typeof (initialData as any).minGroupSize !== "undefined")
-        setValue("minGroupSize", (initialData as any).minGroupSize as any);
+        _setValue("minGroupSize", (initialData as any).minGroupSize as any);
       if (typeof (initialData as any).sessionDuration !== "undefined")
-        setValue(
+        _setValue(
           "sessionDuration",
           (initialData as any).sessionDuration as any,
         );
       if (typeof (initialData as any).sessionsPerWeek !== "undefined")
-        setValue(
+        _setValue(
           "sessionsPerWeek",
           (initialData as any).sessionsPerWeek as any,
         );
       if (typeof (initialData as any).totalSessions !== "undefined")
-        setValue("totalSessions", (initialData as any).totalSessions as any);
+        _setValue("totalSessions", (initialData as any).totalSessions as any);
       if ((initialData as any).tags)
-        setValue("tags", (initialData as any).tags as any);
+        _setValue("tags", (initialData as any).tags as any);
       if ((initialData as any).primaryTutorId)
-        setValue("primaryTutorId", (initialData as any).primaryTutorId as any);
+        _setValue("primaryTutorId", (initialData as any).primaryTutorId as any);
     }
 
     const loadData = async () => {
@@ -511,7 +517,7 @@ export function CourseForm({
       }
     };
 
-    loadData();
+    loadData().finally(() => setLoading(false));
   }, []);
 
   const handleTutorSelection = (tutorId: string, checked: boolean) => {
@@ -725,7 +731,7 @@ export function CourseForm({
     e?.preventDefault(); // Prevent form submission
     setShowValidation(true);
 
-    if (validateStep(currentStep)) {
+    if (validateStep(currentStep) || isEdit) {
       if (currentStep < STEPS.length) {
         setCurrentStep(currentStep + 1);
         setShowValidation(false); // Reset validation state for next step
@@ -793,6 +799,10 @@ export function CourseForm({
       </div>
     </div>
   );
+
+  if(loading || getCurrencySymbolLoading){
+    return "Loading..."
+  }
 
   return (
     <div className="space-y-6">
@@ -1536,13 +1546,15 @@ export function CourseForm({
               <div>
                 <Label htmlFor="difficulty">Difficulty Level</Label>
                 <Select
-                  value={watch("difficulty")}
-                  onValueChange={(value) =>
-                    setValue(
-                      "difficulty",
-                      value as "BEGINNER" | "INTERMEDIATE" | "ADVANCED",
-                    )
-                  }
+                  value={watch("difficulty") || ""}
+                  onValueChange={(value) => {
+                    if (value) {
+                      setValue(
+                        "difficulty",
+                        value as "BEGINNER" | "INTERMEDIATE" | "ADVANCED",
+                      );
+                    }
+                  }}
                 >
                   <SelectTrigger
                     className={errors.difficulty ? "border-red-500" : ""}
