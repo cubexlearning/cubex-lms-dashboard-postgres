@@ -42,19 +42,36 @@ export default function CourseSettingsPage() {
                 if (!json.success) throw new Error(json.error)
                 return json.data
               }}
-              createForm={(form, setForm) => (
+              createForm={(form, setForm, errors) => (
                 <div className="grid grid-cols-2 gap-4">
                   <div className="col-span-2">
-                    <label className="text-sm font-medium">Name</label>
-                    <Input value={form.name || ''} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+                    <label className="text-sm font-medium">Name *</label>
+                    <Input 
+                      value={form.name || ''} 
+                      onChange={(e) => setForm({ ...form, name: e.target.value })}
+                      className={errors.name ? 'border-red-500' : ''}
+                    />
+                    {errors.name && <p className="text-sm text-red-500 mt-1">{errors.name}</p>}
                   </div>
                   <div>
-                    <label className="text-sm font-medium">Type</label>
-                    <Input placeholder="BRITISH / SCOTTISH / INTERNATIONAL" value={form.type || ''} onChange={(e) => setForm({ ...form, type: e.target.value })} />
+                    <label className="text-sm font-medium">Type *</label>
+                    <Input 
+                      placeholder="BRITISH / SCOTTISH / INTERNATIONAL" 
+                      value={form.type || ''} 
+                      onChange={(e) => setForm({ ...form, type: e.target.value })}
+                      className={errors.type ? 'border-red-500' : ''}
+                    />
+                    {errors.type && <p className="text-sm text-red-500 mt-1">{errors.type}</p>}
                   </div>
                   <div>
-                    <label className="text-sm font-medium">Level</label>
-                    <Input placeholder="GCSE / A_LEVEL / ..." value={form.level || ''} onChange={(e) => setForm({ ...form, level: e.target.value })} />
+                    <label className="text-sm font-medium">Level *</label>
+                    <Input 
+                      placeholder="GCSE / A_LEVEL / ..." 
+                      value={form.level || ''} 
+                      onChange={(e) => setForm({ ...form, level: e.target.value })}
+                      className={errors.level ? 'border-red-500' : ''}
+                    />
+                    {errors.level && <p className="text-sm text-red-500 mt-1">{errors.level}</p>}
                   </div>
                   <div className="col-span-2">
                     <label className="text-sm font-medium">Description</label>
@@ -62,6 +79,13 @@ export default function CourseSettingsPage() {
                   </div>
                 </div>
               )}
+              validate={(form) => {
+                const errors: any = {}
+                if (!form.name?.trim()) errors.name = 'Name is required'
+                if (!form.type?.trim()) errors.type = 'Type is required'
+                if (!form.level?.trim()) errors.level = 'Level is required'
+                return errors
+              }}
               save={async (form, editingId) => {
                 const method = editingId ? 'PUT' : 'POST'
                 const url = editingId ? `/api/curriculum/${editingId}` : '/api/curriculum'
@@ -93,18 +117,20 @@ export default function CourseSettingsPage() {
                 if (!json.success) throw new Error(json.error)
                 return json.data
               }}
-              createForm={(form, setForm) => (
+              createForm={(form, setForm, errors) => (
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="text-sm font-medium">Name</label>
+                    <label className="text-sm font-medium">Name *</label>
                     <Input 
                       value={form.name || ''} 
                       onChange={(e) => {
                         const name = e.target.value
                         const slug = generateSlug(name)
                         setForm({ ...form, name, slug })
-                      }} 
+                      }}
+                      className={errors.name ? 'border-red-500' : ''}
                     />
+                    {errors.name && <p className="text-sm text-red-500 mt-1">{errors.name}</p>}
                   </div>
                   <div>
                     <label className="text-sm font-medium">Slug</label>
@@ -120,6 +146,11 @@ export default function CourseSettingsPage() {
                   </div>
                 </div>
               )}
+              validate={(form) => {
+                const errors: any = {}
+                if (!form.name?.trim()) errors.name = 'Name is required'
+                return errors
+              }}
               save={async (form, editingId) => {
                 const method = editingId ? 'PUT' : 'POST'
                 const url = editingId ? `/api/course-types/${editingId}` : '/api/course-types'
@@ -151,18 +182,20 @@ export default function CourseSettingsPage() {
                 if (!json.success) throw new Error(json.error)
                 return json.data
               }}
-              createForm={(form, setForm) => (
+              createForm={(form, setForm, errors) => (
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="text-sm font-medium">Name</label>
+                    <label className="text-sm font-medium">Name *</label>
                     <Input 
                       value={form.name || ''} 
                       onChange={(e) => {
                         const name = e.target.value
                         const slug = generateSlug(name)
                         setForm({ ...form, name, slug })
-                      }} 
+                      }}
+                      className={errors.name ? 'border-red-500' : ''}
                     />
+                    {errors.name && <p className="text-sm text-red-500 mt-1">{errors.name}</p>}
                   </div>
                   <div>
                     <label className="text-sm font-medium">Slug</label>
@@ -178,6 +211,11 @@ export default function CourseSettingsPage() {
                   </div>
                 </div>
               )}
+              validate={(form) => {
+                const errors: any = {}
+                if (!form.name?.trim()) errors.name = 'Name is required'
+                return errors
+              }}
               save={async (form, editingId) => {
                 const method = editingId ? 'PUT' : 'POST'
                 const url = editingId ? `/api/course-formats/${editingId}` : '/api/course-formats'
@@ -224,15 +262,16 @@ function generateSlug(name: string): string {
     .replace(/^-+|-+$/g, '') // Remove leading/trailing hyphens
 }
 
-function ManageSimple({ title, columns, fetchRows, createForm, save, archive, restore, renderRow }: {
+function ManageSimple({ title, columns, fetchRows, createForm, save, archive, restore, renderRow, validate }: {
   title: string
   columns: string[]
   fetchRows: () => Promise<any[]>
-  createForm: (form: any, setForm: (f: any) => void) => React.ReactNode
+  createForm: (form: any, setForm: (f: any) => void, errors: any) => React.ReactNode
   save: (form: any, editingId?: string | null) => Promise<void>
   archive: (id: string) => Promise<void>
   restore: (id: string) => Promise<void>
   renderRow: (row: any) => React.ReactNode[]
+  validate?: (form: any) => { [key: string]: string }
 }) {
   const [items, setItems] = useState<any[]>([])
   const [searchTerm, setSearchTerm] = useState("")
@@ -240,6 +279,7 @@ function ManageSimple({ title, columns, fetchRows, createForm, save, archive, re
   const [loading, setLoading] = useState(false)
   const [editing, setEditing] = useState<any | null>(null)
   const [form, setForm] = useState<any>({})
+  const [errors, setErrors] = useState<any>({})
   const [dialogOpen, setDialogOpen] = useState(false)
   const [confirmId, setConfirmId] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
@@ -251,7 +291,7 @@ function ManageSimple({ title, columns, fetchRows, createForm, save, archive, re
 
   const filtered = useMemo(() => {
     // First filter by active status
-    let result = showArchived ? items : items.filter((r) => r.isActive !== false)
+    let result = showArchived ? items.filter((r) => r.isActive === false) : items.filter((r) => r.isActive !== false)
     
     // Then filter by search term
     const t = searchTerm.trim().toLowerCase()
@@ -263,7 +303,29 @@ function ManageSimple({ title, columns, fetchRows, createForm, save, archive, re
   }, [items, searchTerm, showArchived])
 
   async function onSave() {
-    try { setSaving(true); await save(form, editing?.id || null); setDialogOpen(false); setForm({}); setEditing(null); await load(); toast.success('Saved') } catch (e: any) { toast.error(e.message || 'Failed to save') } finally { setSaving(false) }
+    // Validate form if validation function is provided
+    if (validate) {
+      const validationErrors = validate(form)
+      if (Object.keys(validationErrors).length > 0) {
+        setErrors(validationErrors)
+        return
+      }
+    }
+    
+    try { 
+      setSaving(true)
+      setErrors({})
+      await save(form, editing?.id || null)
+      setDialogOpen(false)
+      setForm({})
+      setEditing(null)
+      await load()
+      toast.success('Saved')
+    } catch (e: any) { 
+      toast.error(e.message || 'Failed to save')
+    } finally { 
+      setSaving(false)
+    }
   }
 
   return (
@@ -281,12 +343,12 @@ function ManageSimple({ title, columns, fetchRows, createForm, save, archive, re
           <Button variant="outline" size="sm" onClick={load} disabled={loading}><RotateCcw className="w-4 h-4" /></Button>
           <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
             <DialogTrigger asChild>
-              <Button className="flex items-center gap-2" onClick={() => { setForm({}); setEditing(null); setDialogOpen(true) }}><Plus className="w-4 h-4" /> Add</Button>
+              <Button className="flex items-center gap-2" onClick={() => { setForm({}); setEditing(null); setErrors({}); setDialogOpen(true) }}><Plus className="w-4 h-4" /> Add</Button>
             </DialogTrigger>
             <DialogContent className="max-w-lg">
               <DialogHeader><DialogTitle>{editing ? 'Edit' : 'Create'}</DialogTitle></DialogHeader>
               <div className="space-y-4">
-                {createForm(form, setForm)}
+                {createForm(form, setForm, errors)}
                 <div className="flex justify-end gap-2">
                   <Button variant="outline" onClick={() => setDialogOpen(false)} disabled={saving}>Cancel</Button>
                   <Button onClick={onSave} disabled={saving}>{saving ? 'Saving...' : 'Save'}</Button>
@@ -329,7 +391,7 @@ function ManageSimple({ title, columns, fetchRows, createForm, save, archive, re
                         <Button variant="ghost" size="sm" className="h-8 w-8 p-0"><MoreHorizontal className="h-4 w-4" /></Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => { setEditing(row); setForm(row); setDialogOpen(true) }}><Edit className="w-4 h-4" /> Edit</DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => { setEditing(row); setForm(row); setErrors({}); setDialogOpen(true) }}><Edit className="w-4 h-4" /> Edit</DropdownMenuItem>
                         {row.isActive ? (
                           <DropdownMenuItem className="text-red-600" onClick={() => setConfirmId(row.id)}><Trash2 className="w-4 h-4" /> Archive</DropdownMenuItem>
                         ) : (

@@ -77,16 +77,35 @@ export async function GET(request: NextRequest) {
 
     const courses = await prisma.course.findMany({
       where,
-      select: {
-        id: true,
-        title: true,
-        status: true,
-        createdAt: true,
-        oneToOnePrice: true,
-        groupPrice: true,
-        courseFormat: { select: { name: true, slug: true } },
-        category: { select: { name: true } },
-        _count: { select: { enrollments: true } }
+      include: {
+        category: true,
+        curriculum: true,
+        courseFormat: true,
+        courseType: true,
+        courseTutors: {
+          include: {
+            tutor: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+                avatar: true,
+                qualifications: true,
+                experience: true,
+                specializations: true,
+                hourlyRate: true,
+              }
+            }
+          }
+        },
+        _count: {
+          select: {
+            enrollments: true,
+            lessons: true,
+            assignments: true,
+            sessions: true,
+          }
+        }
       },
       orderBy: { createdAt: 'desc' },
       skip,
@@ -151,16 +170,110 @@ export async function POST(request: NextRequest) {
         categoryId,
         courseFormatId: courseFormatId || null,
         courseTypeId: courseTypeId || null,
+        curriculumId: body?.curriculumId || null,
         oneToOnePrice: body?.oneToOnePrice ?? null,
+        oneToOneOffer: body?.oneToOneOffer ?? null,
+        oneToOneActive: body?.oneToOneActive ?? true,
         groupPrice: body?.groupPrice ?? null,
+        groupOffer: body?.groupOffer ?? null,
+        groupActive: body?.groupActive ?? true,
+        maxGroupSize: body?.maxGroupSize ?? null,
+        minGroupSize: body?.minGroupSize ?? null,
+        sessionDuration: body?.sessionDuration ?? null,
+        sessionsPerWeek: body?.sessionsPerWeek ?? null,
+        totalSessions: body?.totalSessions ?? null,
+        minAge: body?.minAge ?? null,
+        maxAge: body?.maxAge ?? null,
+        prerequisiteLevel: body?.prerequisiteLevel || null,
+        primaryImage: body?.primaryImage || null,
+        secondaryImage: body?.secondaryImage || null,
+        videoUrl: body?.videoUrl || null,
+        tags: body?.tags || [],
+        difficulty: body?.difficulty || null,
         status: (body?.status as any) || 'DRAFT',
       },
       include: {
-        category: { select: { name: true } },
-        courseFormat: { select: { name: true, slug: true } },
-        _count: { select: { enrollments: true } }
+        category: true,
+        curriculum: true,
+        courseFormat: true,
+        courseType: true,
+        courseTutors: {
+          include: {
+            tutor: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+                avatar: true,
+                qualifications: true,
+                experience: true,
+                specializations: true,
+                hourlyRate: true,
+              }
+            }
+          }
+        },
+        _count: {
+          select: {
+            enrollments: true,
+            lessons: true,
+            assignments: true,
+            sessions: true,
+          }
+        }
       }
     })
+
+    // Handle tutor assignments if provided
+    if (body?.tutorIds && Array.isArray(body.tutorIds) && body.tutorIds.length > 0) {
+      const tutorAssignments = body.tutorIds.map((tutorId: string) => ({
+        courseId: created.id,
+        tutorId: tutorId,
+        isPrimary: tutorId === body?.primaryTutorId,
+      }))
+
+      await prisma.courseTutor.createMany({
+        data: tutorAssignments,
+        skipDuplicates: true,
+      })
+
+      // Fetch the updated course with tutors
+      const updatedCourse = await prisma.course.findUnique({
+        where: { id: created.id },
+        include: {
+          category: true,
+          curriculum: true,
+          courseFormat: true,
+          courseType: true,
+          courseTutors: {
+            include: {
+              tutor: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true,
+                  avatar: true,
+                  qualifications: true,
+                  experience: true,
+                  specializations: true,
+                  hourlyRate: true,
+                }
+              }
+            }
+          },
+          _count: {
+            select: {
+              enrollments: true,
+              lessons: true,
+              assignments: true,
+              sessions: true,
+            }
+          }
+        }
+      })
+
+      return NextResponse.json({ success: true, data: updatedCourse })
+    }
 
     return NextResponse.json({ success: true, data: created })
   } catch (error: any) {
