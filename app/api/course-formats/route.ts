@@ -19,11 +19,43 @@ export async function GET(request: NextRequest) {
   try {
     await ensurePrismaConnected()
     const { searchParams } = new URL(request.url)
+    const page = parseInt(searchParams.get('page') || '1')
+    const limit = parseInt(searchParams.get('limit') || '10')
     const includeInactive = searchParams.get('includeInactive') === 'true'
+    const search = searchParams.get('search') || ''
+    
+    // Build where clause
     const where: any = {}
     if (!includeInactive) where.isActive = true
-    const rows = await prisma.courseFormatModel.findMany({ where, orderBy: { sortOrder: 'asc' } })
-    return NextResponse.json({ success: true, data: rows })
+    if (search) {
+      where.OR = [
+        { name: { contains: search, mode: 'insensitive' } },
+        { slug: { contains: search, mode: 'insensitive' } },
+        { description: { contains: search, mode: 'insensitive' } }
+      ]
+    }
+    
+    // Get total count
+    const total = await prisma.courseFormatModel.count({ where })
+    
+    // Get paginated data
+    const rows = await prisma.courseFormatModel.findMany({ 
+      where, 
+      orderBy: { sortOrder: 'asc' },
+      skip: (page - 1) * limit,
+      take: limit
+    })
+    
+    return NextResponse.json({ 
+      success: true, 
+      data: rows,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit)
+      }
+    })
   } catch (e) {
     return NextResponse.json({ success: false, error: 'Failed to fetch course formats' }, { status: 500 })
   }

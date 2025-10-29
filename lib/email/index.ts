@@ -14,28 +14,19 @@ class EmailService {
 
   constructor() {
     if (process.env.EMAIL_ENABLED === 'true') {
-      // this.transporter = nodemailer.createTransport({
-      //   host: process.env.SMTP_HOST,
-      //   port: parseInt(process.env.SMTP_PORT || '587'),
-      //   secure: process.env.SMTP_PORT === '465',
-      //   auth: {
-      //     user: process.env.SMTP_USERNAME,
-      //     pass: process.env.SMTP_PASSWORD,
-      //   },
-      //   // Add connection timeout
-      //   connectionTimeout: 10000,
-      //   greetingTimeout: 5000,
-      //   socketTimeout: 10000,
-      // })
-
       this.transporter = nodemailer.createTransport({
-        host: "sandbox.smtp.mailtrap.io",
-        port: 2525,
+        host: process.env.SMTP_HOST,
+        port: parseInt(process.env.SMTP_PORT || '587'),
+        secure: process.env.SMTP_PORT === '465',
         auth: {
-          user: "06668586581c1e",
-          pass: "**88d5"
-        }
-      });
+          user: process.env.SMTP_USERNAME,
+          pass: process.env.SMTP_PASSWORD,
+        },
+        // Add connection timeout
+        connectionTimeout: 10000,
+        greetingTimeout: 5000,
+        socketTimeout: 10000,
+      })
     }
   }
 
