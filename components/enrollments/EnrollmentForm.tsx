@@ -28,6 +28,15 @@ interface Student {
   ageGroup?: string
 }
 
+interface CourseFormat {
+  id: string
+  name: string
+  slug: string
+  price: number
+  offerPrice?: number
+  isActive: boolean
+}
+
 interface Course {
   id: string
   title: string
@@ -36,7 +45,7 @@ interface Course {
   oneToOneActive?: boolean
   groupPrice?: number
   groupActive?: boolean
-  availableFormats?: string[]
+  availableFormats?: CourseFormat[]
   pricing?: any // Legacy support
 }
 
@@ -49,7 +58,7 @@ export function EnrollmentForm({ onSuccess, onCancel }: EnrollmentFormProps) {
   const [loadingCourses, setLoadingCourses] = useState(false)
   const [taxRate, setTaxRate] = useState(0.18) // Default 18%
   const [currency, setCurrency] = useState('INR')
-  const [availableFormats, setAvailableFormats] = useState<string[]>([])
+  const [availableFormats, setAvailableFormats] = useState<CourseFormat[]>([])
   const [lastProcessedCourse, setLastProcessedCourse] = useState<string>('')
   const [lastProcessedFormat, setLastProcessedFormat] = useState<string>('')
   
@@ -83,7 +92,8 @@ export function EnrollmentForm({ onSuccess, onCancel }: EnrollmentFormProps) {
     
     // Course data
     courseId: '',
-    format: 'ONE_TO_ONE' as 'ONE_TO_ONE' | 'GROUP',
+    format: '',
+    formatId: '',
     sessionCount: 20,
     sessionDuration: 60,
     preferredDays: [] as string[],
@@ -150,7 +160,7 @@ export function EnrollmentForm({ onSuccess, onCancel }: EnrollmentFormProps) {
 
         // Normalize into the shape EnrollmentForm expects
         const normalized: Course[] = rawCourses.map((c: any) => {
-          const availableFormats: string[] = []
+          const availableFormats: CourseFormat[] = []
           
           // Handle null/undefined values properly - Decimal fields can be null
           const oneToOnePrice = c.oneToOnePrice !== null && c.oneToOnePrice !== undefined ? Number(c.oneToOnePrice) : 0
@@ -158,8 +168,42 @@ export function EnrollmentForm({ onSuccess, onCancel }: EnrollmentFormProps) {
           
           console.log(`Course ${c.title}: oneToOnePrice=${c.oneToOnePrice} (${typeof c.oneToOnePrice}), groupPrice=${c.groupPrice} (${typeof c.groupPrice})`)
           
-          if (oneToOnePrice > 0) availableFormats.push('ONE_TO_ONE')
-          if (groupPrice > 0) availableFormats.push('GROUP')
+          // Check if course has dynamic pricing from pricingHistory
+          if (c.pricingHistory && Array.isArray(c.pricingHistory) && c.pricingHistory.length > 0) {
+            // Use dynamic pricing from CoursePricing table
+            c.pricingHistory.forEach((pricing: any) => {
+              if (pricing.pricingFormat && pricing.isActive) {
+                availableFormats.push({
+                  id: pricing.pricingFormat.id,
+                  name: pricing.pricingFormat.name,
+                  slug: pricing.pricingFormat.slug,
+                  price: Number(pricing.offerPrice || pricing.price),
+                  offerPrice: pricing.offerPrice ? Number(pricing.offerPrice) : undefined,
+                  isActive: pricing.isActive
+                })
+              }
+            })
+          } else {
+            // Fallback to legacy oneToOne and group pricing
+            if (oneToOnePrice > 0) {
+              availableFormats.push({
+                id: 'one-to-one',
+                name: 'One-to-One',
+                slug: 'ONE_TO_ONE',
+                price: oneToOnePrice,
+                isActive: c.oneToOneActive !== false
+              })
+            }
+            if (groupPrice > 0) {
+              availableFormats.push({
+                id: 'group',
+                name: 'Group',
+                slug: 'GROUP',
+                price: groupPrice,
+                isActive: c.groupActive !== false
+              })
+            }
+          }
           
           return {
             id: c.id,
@@ -223,17 +267,23 @@ export function EnrollmentForm({ onSuccess, onCancel }: EnrollmentFormProps) {
       
       // Auto-select format if only one available and no format is currently selected
       if (computedAvailableFormats.length === 1 && !formData.format) {
+        const firstFormat = computedAvailableFormats[0]
         setFormData(prev => ({
           ...prev,
-          format: computedAvailableFormats[0] as 'ONE_TO_ONE' | 'GROUP'
+          format: firstFormat.slug,
+          formatId: firstFormat.id,
+          basePrice: firstFormat.price
         }))
       }
       
       // Reset format if current format is not available
-      if (computedAvailableFormats.length > 0 && !computedAvailableFormats.includes(formData.format)) {
+      if (computedAvailableFormats.length > 0 && !computedAvailableFormats.find(f => f.slug === formData.format)) {
+        const firstFormat = computedAvailableFormats[0]
         setFormData(prev => ({
           ...prev,
-          format: computedAvailableFormats[0] as 'ONE_TO_ONE' | 'GROUP'
+          format: firstFormat.slug,
+          formatId: firstFormat.id,
+          basePrice: firstFormat.price
         }))
       }
     }
@@ -251,43 +301,29 @@ export function EnrollmentForm({ onSuccess, onCancel }: EnrollmentFormProps) {
         console.log('Available formats:', selectedCourse.availableFormats)
         console.log('Selected format:', formData.format)
         
-        // Check if format is available
-        const formats = selectedCourse.availableFormats || []
-        if (!formats.includes(formData.format)) {
+        // Find the selected format
+        const selectedFormat = selectedCourse.availableFormats?.find(f => f.slug === formData.format)
+        
+        if (!selectedFormat) {
           console.warn('Selected format not available for this course')
           toast.error('Selected format is not available for this course. Please choose a different format.')
           return
         }
         
-        // Get pricing for the selected format
-        let basePrice = 0
+        // Get pricing from the format object
+        const basePrice = selectedFormat.price
         
-        if (formData.format === 'ONE_TO_ONE') {
-          basePrice = selectedCourse.oneToOnePrice || 0
-          console.log('ONE_TO_ONE price:', selectedCourse.oneToOnePrice, '-> basePrice:', basePrice)
-        } else {
-          basePrice = selectedCourse.groupPrice || 0
-          console.log('GROUP price:', selectedCourse.groupPrice, '-> basePrice:', basePrice)
-        }
+        console.log('Extracted base price:', basePrice, 'for format:', formData.format)
         
-        // Ensure basePrice is a valid number
-        const numericBasePrice = typeof basePrice === 'number' && !isNaN(basePrice) ? basePrice : 0
-        
-        console.log('Extracted base price:', numericBasePrice, 'for format:', formData.format)
-        
-        if (numericBasePrice > 0) {
+        if (basePrice > 0) {
           setFormData(prev => ({
             ...prev,
-            basePrice: numericBasePrice
+            basePrice: basePrice,
+            formatId: selectedFormat.id
           }))
           setLastProcessedFormat(currentKey)
         } else {
           console.warn('No pricing found for this course and format')
-          console.log('Course pricing details:', {
-            oneToOnePrice: selectedCourse.oneToOnePrice,
-            groupPrice: selectedCourse.groupPrice,
-            format: formData.format
-          })
           toast.error('No pricing available for this format. Please configure pricing in the course settings.')
         }
       }
@@ -325,18 +361,24 @@ export function EnrollmentForm({ onSuccess, onCancel }: EnrollmentFormProps) {
   }, [])
 
   // Helper function to get format status
-  const getFormatStatus = useCallback((format: string) => {
-    return availableFormats.includes(format) ? 'available' : 'unavailable'
+  const getFormatStatus = useCallback((formatSlug: string) => {
+    return availableFormats.find(f => f.slug === formatSlug) ? 'available' : 'unavailable'
   }, [availableFormats])
 
   // Stable callback for format change
-  const handleFormatChange = useCallback((newFormat: 'ONE_TO_ONE' | 'GROUP') => {
-    if (getFormatStatus(newFormat) === 'available') {
-      setFormData(prev => ({ ...prev, format: newFormat }))
+  const handleFormatChange = useCallback((formatSlug: string) => {
+    const selectedFormat = availableFormats.find(f => f.slug === formatSlug)
+    if (selectedFormat) {
+      setFormData(prev => ({ 
+        ...prev, 
+        format: formatSlug,
+        formatId: selectedFormat.id,
+        basePrice: selectedFormat.price
+      }))
     } else {
-      toast.error(`${newFormat === 'ONE_TO_ONE' ? 'One-to-One' : 'Group'} format is not available for this course`)
+      toast.error(`Selected format is not available for this course`)
     }
-  }, [getFormatStatus])
+  }, [availableFormats])
 
   // Stable callback for course change
   const handleCourseChange = useCallback((courseId: string) => {
@@ -347,41 +389,43 @@ export function EnrollmentForm({ onSuccess, onCancel }: EnrollmentFormProps) {
   const FormatSelection = memo(({ 
     selectedFormat, 
     availableFormats, 
-    onFormatChange, 
-    getFormatStatus 
+    onFormatChange
   }: {
     selectedFormat: string
-    availableFormats: string[]
-    onFormatChange: (format: 'ONE_TO_ONE' | 'GROUP') => void
-    getFormatStatus: (format: string) => string
+    availableFormats: CourseFormat[]
+    onFormatChange: (formatSlug: string) => void
   }) => (
     <div className="space-y-2">
       <Label>Format *</Label>
-      <div className="flex gap-4">
-        <Button
-          type="button"
-          variant={selectedFormat === 'ONE_TO_ONE' ? 'default' : 'outline'}
-          onClick={() => onFormatChange('ONE_TO_ONE')}
-          disabled={getFormatStatus('ONE_TO_ONE') === 'unavailable'}
-          className={`flex-1 ${getFormatStatus('ONE_TO_ONE') === 'unavailable' ? 'opacity-50 cursor-not-allowed' : ''}`}
-        >
-          One-to-One {getFormatStatus('ONE_TO_ONE') === 'available' ? '✓' : '✗'}
-        </Button>
-        <Button
-          type="button"
-          variant={selectedFormat === 'GROUP' ? 'default' : 'outline'}
-          onClick={() => onFormatChange('GROUP')}
-          disabled={getFormatStatus('GROUP') === 'unavailable'}
-          className={`flex-1 ${getFormatStatus('GROUP') === 'unavailable' ? 'opacity-50 cursor-not-allowed' : ''}`}
-        >
-          Group {getFormatStatus('GROUP') === 'available' ? '✓' : '✗'}
-        </Button>
+      <div className="">
+        {availableFormats.map((format) => (
+          <Button
+            key={format.id}
+            type="button"
+            variant={selectedFormat === format.slug ? 'default' : 'outline'}
+            onClick={() => onFormatChange(format.slug)}
+            disabled={!format.isActive}
+            className={`h-auto py-3 w-full ${!format.isActive ? 'opacity-50 cursor-not-allowed' : ''}`}
+          >
+            <div className="flex justify-center items-center gap-1 w-full">
+              <span className="font-medium">{format.name}</span>
+              {format.offerPrice && format.offerPrice < format.price ? (
+                <div className="flex gap-2 text-xs">
+                  <span className="line-through opacity-60">({currency} {format.price})</span>
+                  <span className="font-semibold text-green-600">({currency} {format.offerPrice})</span>
+                </div>
+              ) : (
+                <span className="text-xs font-semibold">{currency} {format.price}</span>
+              )}
+            </div>
+          </Button>
+        ))}
       </div>
       {availableFormats.length === 0 && (
         <Alert>
           <AlertCircle className="h-4 w-4" />
           <AlertDescription>
-            This course has no pricing configured. Please configure pricing in the course settings.
+            Please select a course
           </AlertDescription>
         </Alert>
       )}
@@ -977,7 +1021,6 @@ export function EnrollmentForm({ onSuccess, onCancel }: EnrollmentFormProps) {
                 selectedFormat={formData.format}
                 availableFormats={availableFormats}
                 onFormatChange={handleFormatChange}
-                getFormatStatus={getFormatStatus}
               />
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

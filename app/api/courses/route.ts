@@ -98,6 +98,14 @@ export async function GET(request: NextRequest) {
             }
           }
         },
+        pricingHistory: {
+          where: {
+            isActive: true
+          },
+          include: {
+            pricingFormat: true
+          }
+        },
         _count: {
           select: {
             enrollments: true,
