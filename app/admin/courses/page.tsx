@@ -461,7 +461,7 @@ export default function AdminCoursesPage() {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => router.push(`/admin/courses/${course.id}/syllabus`)}>
+                          <DropdownMenuItem onClick={() => router.push(`/admin/courses/${course.id}`)}>
                             <Eye className="mr-2 h-4 w-4" />
                             View Details
                           </DropdownMenuItem>
