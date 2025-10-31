@@ -589,8 +589,11 @@ export default function AdminCoursesPage() {
 
 
         {/* Create Course Modal */}
-        <Dialog open={isCreateModalOpen} onOpenChange={setIsCreateModalOpen}>
-          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+        <Dialog open={isCreateModalOpen}>
+          <DialogContent 
+            className="max-w-4xl max-h-[90vh] overflow-y-auto"
+            onInteractOutside={(e) => e.preventDefault()}
+          >
             <DialogHeader>
               <DialogTitle>Create New Course</DialogTitle>
             </DialogHeader>
@@ -603,8 +606,11 @@ export default function AdminCoursesPage() {
         </Dialog>
 
         {/* Edit Course Modal */}
-        <Dialog open={isEditModalOpen} onOpenChange={setIsEditModalOpen}>
-          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+        <Dialog open={isEditModalOpen}>
+          <DialogContent 
+            className="max-w-4xl max-h-[90vh] overflow-y-auto"
+            onInteractOutside={(e) => e.preventDefault()}
+          >
             <DialogHeader>
               <DialogTitle>Edit Course</DialogTitle>
             </DialogHeader>
