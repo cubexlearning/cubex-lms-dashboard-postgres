@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Plus, RotateCcw, MoreHorizontal, Edit, Trash2, Archive, Loader2 } from "lucide-react"
+import { Plus, RotateCcw, MoreHorizontal, Edit, Trash2, Archive, Loader2, ChevronLeft, ChevronRight } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
@@ -36,11 +36,17 @@ export default function CourseSettingsPage() {
             <ManageSimple
               title="Curriculum"
               columns={["Name", "Type", "Level", "Status", "Created", "Actions"]}
-              fetchRows={async () => {
-                const res = await fetch('/api/curriculum?includeInactive=true')
+              fetchRows={async (page: number, limit: number, search: string) => {
+                const params = new URLSearchParams({
+                  page: page.toString(),
+                  limit: limit.toString(),
+                  includeInactive: 'true',
+                  search
+                })
+                const res = await fetch(`/api/curriculum?${params}`)
                 const json = await res.json()
                 if (!json.success) throw new Error(json.error)
-                return json.data
+                return { data: json.data, pagination: json.pagination }
               }}
               createForm={(form, setForm, errors) => (
                 <div className="grid grid-cols-2 gap-4">
@@ -111,11 +117,17 @@ export default function CourseSettingsPage() {
             <ManageSimple
               title="Course Types"
               columns={["Name", "Slug", "Status", "Created", "Actions"]}
-              fetchRows={async () => {
-                const res = await fetch('/api/course-types?includeInactive=true')
+              fetchRows={async (page: number, limit: number, search: string) => {
+                const params = new URLSearchParams({
+                  page: page.toString(),
+                  limit: limit.toString(),
+                  includeInactive: 'true',
+                  search
+                })
+                const res = await fetch(`/api/course-types?${params}`)
                 const json = await res.json()
                 if (!json.success) throw new Error(json.error)
-                return json.data
+                return { data: json.data, pagination: json.pagination }
               }}
               createForm={(form, setForm, errors) => (
                 <div className="grid grid-cols-2 gap-4">
@@ -176,11 +188,17 @@ export default function CourseSettingsPage() {
             <ManageSimple
               title="Course Formats"
               columns={["Name", "Slug", "Status", "Created", "Actions"]}
-              fetchRows={async () => {
-                const res = await fetch('/api/course-formats?includeInactive=true')
+              fetchRows={async (page: number, limit: number, search: string) => {
+                const params = new URLSearchParams({
+                  page: page.toString(),
+                  limit: limit.toString(),
+                  includeInactive: 'true',
+                  search
+                })
+                const res = await fetch(`/api/course-formats?${params}`)
                 const json = await res.json()
                 if (!json.success) throw new Error(json.error)
-                return json.data
+                return { data: json.data, pagination: json.pagination }
               }}
               createForm={(form, setForm, errors) => (
                 <div className="grid grid-cols-2 gap-4">
@@ -265,7 +283,7 @@ function generateSlug(name: string): string {
 function ManageSimple({ title, columns, fetchRows, createForm, save, archive, restore, renderRow, validate }: {
   title: string
   columns: string[]
-  fetchRows: () => Promise<any[]>
+  fetchRows: (page: number, limit: number, search: string) => Promise<{ data: any[], pagination: any }>
   createForm: (form: any, setForm: (f: any) => void, errors: any) => React.ReactNode
   save: (form: any, editingId?: string | null) => Promise<void>
   archive: (id: string) => Promise<void>
@@ -283,24 +301,41 @@ function ManageSimple({ title, columns, fetchRows, createForm, save, archive, re
   const [dialogOpen, setDialogOpen] = useState(false)
   const [confirmId, setConfirmId] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const [page, setPage] = useState(1)
+  const [limit, setLimit] = useState(10)
+  const [pagination, setPagination] = useState<any>(null)
 
   async function load() {
-    try { setLoading(true); const rows = await fetchRows(); setItems(rows) } catch (e: any) { toast.error(e.message || 'Failed to load') } finally { setLoading(false) }
+    try { 
+      setLoading(true)
+      const result = await fetchRows(page, limit, searchTerm)
+      setItems(result.data)
+      setPagination(result.pagination)
+    } catch (e: any) { 
+      toast.error(e.message || 'Failed to load') 
+    } finally { 
+      setLoading(false) 
+    }
   }
-  useEffect(() => { load() }, [])
+  
+  useEffect(() => { load() }, [page, limit])
+  
+  // Debounced search effect
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (page === 1) {
+        load()
+      } else {
+        setPage(1)
+      }
+    }, 500)
+    return () => clearTimeout(timer)
+  }, [searchTerm])
 
   const filtered = useMemo(() => {
-    // First filter by active status
-    let result = showArchived ? items.filter((r) => r.isActive === false) : items.filter((r) => r.isActive !== false)
-    
-    // Then filter by search term
-    const t = searchTerm.trim().toLowerCase()
-    if (t) {
-      result = result.filter((r) => JSON.stringify(r).toLowerCase().includes(t))
-    }
-    
-    return result
-  }, [items, searchTerm, showArchived])
+    // Filter by active status only (search is now handled server-side)
+    return showArchived ? items.filter((r) => r.isActive === false) : items.filter((r) => r.isActive !== false)
+  }, [items, showArchived])
 
   async function onSave() {
     // Validate form if validation function is provided
@@ -331,7 +366,7 @@ function ManageSimple({ title, columns, fetchRows, createForm, save, archive, re
   return (
     <Card>
       <CardHeader className="flex items-center justify-between">
-        <CardTitle>{title} ({filtered.length})</CardTitle>
+        <CardTitle>{title} ({pagination?.total || 0})</CardTitle>
         <div className="flex items-center gap-2">
           <Button 
             variant={showArchived ? 'default' : 'outline'} 
@@ -414,6 +449,46 @@ function ManageSimple({ title, columns, fetchRows, createForm, save, archive, re
             </div>
           </DialogContent>
         </Dialog>
+        
+        {/* Pagination Controls */}
+        {pagination && pagination.totalPages > 1 && (
+          <div className="flex items-center justify-between mt-4 pt-4 border-t">
+            <div className="text-sm text-gray-600">
+              Showing {((page - 1) * limit) + 1} to {Math.min(page * limit, pagination.total)} of {pagination.total} items
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPage(p => Math.max(1, p - 1))}
+                disabled={page === 1 || loading}
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </Button>
+              <div className="text-sm">
+                Page {page} of {pagination.totalPages}
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPage(p => Math.min(pagination.totalPages, p + 1))}
+                disabled={page === pagination.totalPages || loading}
+              >
+                <ChevronRight className="w-4 h-4" />
+              </Button>
+              <select
+                className="ml-2 border rounded px-2 py-1 text-sm"
+                value={limit}
+                onChange={(e) => { setLimit(Number(e.target.value)); setPage(1) }}
+              >
+                <option value="5">5 per page</option>
+                <option value="10">10 per page</option>
+                <option value="20">20 per page</option>
+                <option value="50">50 per page</option>
+              </select>
+            </div>
+          </div>
+        )}
       </CardContent>
     </Card>
   )

@@ -3,10 +3,17 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma, ensurePrismaConnected } from '@/lib/db'
 import { z } from 'zod'
 
-// GET /api/curriculum - List all curricula
+// GET /api/curriculum - List all curricula with pagination
 export async function GET(request: NextRequest) {
   try {
     await ensurePrismaConnected()
+    
+    const { searchParams } = new URL(request.url)
+    const page = parseInt(searchParams.get('page') || '1')
+    const limit = parseInt(searchParams.get('limit') || '10')
+    const includeInactive = searchParams.get('includeInactive') === 'true'
+    const search = searchParams.get('search') || ''
+    
     // First, let's create some default curricula if none exist
     const existingCurricula = await prisma.curriculum.findMany()
     
@@ -51,18 +58,42 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // Build where clause
+    const where: any = {}
+    if (!includeInactive) {
+      where.isActive = true
+    }
+    if (search) {
+      where.OR = [
+        { name: { contains: search, mode: 'insensitive' } },
+        { type: { contains: search, mode: 'insensitive' } },
+        { level: { contains: search, mode: 'insensitive' } },
+        { description: { contains: search, mode: 'insensitive' } }
+      ]
+    }
+
+    // Get total count
+    const total = await prisma.curriculum.count({ where })
+
+    // Get paginated data
     const curricula = await prisma.curriculum.findMany({
-      where: {
-        isActive: true
-      },
+      where,
       orderBy: {
         name: 'asc'
-      }
+      },
+      skip: (page - 1) * limit,
+      take: limit
     })
 
     return NextResponse.json({
       success: true,
-      data: curricula
+      data: curricula,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit)
+      }
     })
 
   } catch (error) {
